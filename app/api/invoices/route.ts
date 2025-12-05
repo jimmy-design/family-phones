@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getConnection } from "@/lib/db";
+import { ResultSetHeader } from "mysql2";
 
 // GET - Fetch all invoices with customer name
 export async function GET() {
@@ -34,7 +35,7 @@ export async function GET() {
 }
 
 // POST - Create new invoice with items
-export async function POST(request) {
+export async function POST(request: Request) {
   const conn = await getConnection();
   
   try {
@@ -64,8 +65,8 @@ export async function POST(request) {
     const invoice_number = `${prefix}-${dateStr}-${random}`;
 
     // Insert invoice into database - convert undefined to null
-    const [result] = await conn.execute(
-      `INSERT INTO invoices 
+    const [result] = await conn.execute<ResultSetHeader>(
+      `INSERT INTO invoices
         (invoice_number, customer_id, invoice_date, due_date, subtotal, tax_amount,
          discount_amount, total_amount, amount_paid, payment_status, payment_method, currency, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -113,9 +114,10 @@ export async function POST(request) {
       message: `${type === "quotation" ? "Quotation" : "Invoice"} created successfully`
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error creating invoice:", error);
-    return NextResponse.json({ error: "Failed to create invoice: " + error.message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: "Failed to create invoice: " + errorMessage }, { status: 500 });
   } finally {
     await conn.end();
   }
