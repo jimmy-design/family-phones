@@ -838,23 +838,12 @@ const printInvoice = () => {
                 />
                 <div className="flex gap-2">
                   {isInvoiceFeature ? (
-                    <>
-                      <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
-                        onClick={() => setIsInvoiceModalOpen(true)}
-                      >
-                        Generate
-                      </button>
-                      <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-green-600 text-white rounded-lg font-semibold"
-                        onClick={() => {
-                          setInvoiceToPay(null);
-                          setIsPaymentModalOpen(true);
-                        }}
-                      >
-                        Update
-                      </button>
-                    </>
+                    <button
+                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
+                      onClick={() => setIsInvoiceModalOpen(true)}
+                    >
+                      Generate
+                    </button>
                   ) : (
                     <button
                       className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
@@ -1852,30 +1841,6 @@ const printInvoice = () => {
           </div>
         </div>
       )}
-
-      {/* Payment Modal for Invoices & Quotations */}
-      <PaymentModal
-        isOpen={isPaymentModalOpen}
-        onClose={() => {
-          setIsPaymentModalOpen(false);
-          setInvoiceToPay(null);
-        }}
-        invoice={invoiceToPay}
-        onPaymentRecorded={async () => {
-          // Refresh invoices data
-          if (isInvoiceFeature) {
-            try {
-              const res = await fetch("/api/invoices");
-              if (res.ok) {
-                const data = await res.json();
-                setDataRows(data || []);
-              }
-            } catch (err) {
-              console.error("Failed to refresh invoices:", err);
-            }
-          }
-        }}
-      />
 
       {/* Bottom Nav */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 z-50">
