@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db";
+import { getConnection } from "@/lib/db";
 
 // Expected payload
 // {
@@ -10,7 +10,9 @@ import { supabase } from "@/lib/db";
 // }
 
 async function handlePayment(req: Request) {
+  let conn: any;
   try {
+    conn = await getConnection();
     const body = await req.json();
     const { invoice_id, invoice_number, payment_method, payment_date } = body || {};
 
@@ -26,30 +28,26 @@ async function handlePayment(req: Request) {
     }
 
     // 1) Fetch current invoice using id or invoice_number
-    let invoice: Record<string, unknown> | null = null;
+    let invoice: any = null;
 
     if (invoice_id) {
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, invoice_number, total_amount, amount_paid, balance_due, currency, payment_status")
-        .eq("id", invoice_id)
-        .limit(1)
-        .single();
-      
-      if (!error && data) {
-        invoice = data;
-      }
+      const [rows]: any = await conn.execute(
+        `SELECT id, invoice_number, total_amount, amount_paid, balance_due, currency, payment_status
+         FROM invoices
+         WHERE id = ?
+         LIMIT 1`,
+        [invoice_id]
+      );
+      invoice = Array.isArray(rows) ? rows[0] : (rows as any);
     } else if (invoice_number) {
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, invoice_number, total_amount, amount_paid, balance_due, currency, payment_status")
-        .eq("invoice_number", invoice_number)
-        .limit(1)
-        .single();
-      
-      if (!error && data) {
-        invoice = data;
-      }
+      const [rows]: any = await conn.execute(
+        `SELECT id, invoice_number, total_amount, amount_paid, balance_due, currency, payment_status
+         FROM invoices
+         WHERE invoice_number = ? OR TRIM(invoice_number) = TRIM(?) OR LOWER(REPLACE(invoice_number,' ','')) = LOWER(REPLACE(?,' ',''))
+         LIMIT 1`,
+        [invoice_number, invoice_number, invoice_number]
+      );
+      invoice = Array.isArray(rows) ? rows[0] : (rows as any);
     }
 
     if (!invoice) {
@@ -65,31 +63,20 @@ async function handlePayment(req: Request) {
     const nextStatus = balanceDue <= 0 ? "Paid" : clampedPaid > 0 ? "Partially Paid" : "Unpaid";
 
     // 2) Update invoice amounts and status
-    const { error: updateError } = await supabase
-      .from("invoices")
-      .update({
-        amount_paid: clampedPaid,
-        balance_due: balanceDue,
-        payment_status: nextStatus,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", invoice.id);
-
-    if (updateError) {
-      console.error("Error updating invoice:", updateError);
-      return NextResponse.json({ error: "Failed to update invoice" }, { status: 500 });
-    }
+    await conn.execute(
+      `UPDATE invoices
+       SET amount_paid = ?, balance_due = ?, payment_status = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [clampedPaid, balanceDue, nextStatus, invoice.id]
+    );
 
     // 3) Optionally insert a payment record (if payments table exists)
     try {
-      await supabase
-        .from("payments")
-        .insert({
-          invoice_id: invoice.id,
-          amount: paymentAmount,
-          method: payment_method || null,
-          payment_date: payment_date || null
-        });
+      await conn.execute(
+        `INSERT INTO payments (invoice_id, amount, method, payment_date, created_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [invoice.id, paymentAmount, payment_method || null, payment_date || null]
+      );
     } catch (e) {
       // If payments table doesn't exist, skip without failing the whole request
       console.warn("Skipping payment log: ", (e as Error).message);
@@ -107,9 +94,11 @@ async function handlePayment(req: Request) {
     };
 
     return NextResponse.json(updated, { status: 200 });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("/api/invoices/pay PUT error", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
+  } finally {
+    try { if (conn) await conn.end(); } catch {}
   }
 }
 

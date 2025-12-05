@@ -9,7 +9,7 @@ export async function OPTIONS() {
 // Handle GET requests to fetch only invoices with outstanding balances
 export async function GET() {
   try {
-    // Query to select invoices - we'll filter in JS since Supabase doesn't support column comparison directly
+    // Query to select invoices where total_amount is greater than amount_paid
     const { data: rows, error } = await supabase
       .from("invoices")
       .select(`
@@ -18,6 +18,7 @@ export async function GET() {
           full_name
         )
       `)
+      .gt("total_amount", supabase.rpc ? 0 : 0) // We'll filter in JS since Supabase doesn't support column comparison directly
       .order("due_date", { ascending: true });
 
     if (error) {

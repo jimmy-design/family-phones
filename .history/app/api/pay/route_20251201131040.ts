@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db";
+import { getConnection } from "@/lib/db";
+import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -15,20 +16,22 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: "Invalid payment data" }, { status: 400 });
         }
 
-        // 1. Fetch current invoice data
-        const { data: invoiceData, error: fetchError } = await supabase
-            .from("invoices")
-            .select("total_amount, amount_paid, payment_status, currency")
-            .eq("id", invoice_id)
-            .single();
+        const conn = await getConnection();
 
-        if (fetchError || !invoiceData) {
+        // 1. Fetch current invoice data
+        const [invoiceRows] = await conn.execute<RowDataPacket[]>(
+            "SELECT total_amount, amount_paid, payment_status, currency FROM invoices WHERE id = ?",
+            [invoice_id]
+        );
+
+        if (invoiceRows.length === 0) {
+            await conn.end();
             return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
         }
 
-        const currentInvoice = invoiceData;
-        const newAmountPaid = (currentInvoice.amount_paid || 0) + new_payment_amount;
-        const totalAmount = currentInvoice.total_amount || 0;
+        const currentInvoice = invoiceRows[0];
+        const newAmountPaid = currentInvoice.amount_paid + new_payment_amount;
+        const totalAmount = currentInvoice.total_amount;
 
         // 2. Determine new payment status
         let newStatus = currentInvoice.payment_status;
@@ -41,34 +44,24 @@ export async function PUT(request: Request) {
         }
 
         // 3. Update the invoices table
-        const { error: updateError } = await supabase
-            .from("invoices")
-            .update({
-                amount_paid: newAmountPaid,
-                payment_status: newStatus
-            })
-            .eq("id", invoice_id);
-
-        if (updateError) {
-            console.error("Error updating invoice:", updateError);
-            return NextResponse.json({ error: "Failed to update invoice" }, { status: 500 });
-        }
+        await conn.execute<ResultSetHeader>(
+            `UPDATE invoices SET 
+                amount_paid = ?, 
+                payment_status = ? 
+            WHERE id = ?`,
+            [newAmountPaid, newStatus, invoice_id]
+        );
         
         // 4. (Optional but recommended) Insert payment record into a dedicated payments table
-        try {
-            await supabase
-                .from("payments")
-                .insert({
-                    invoice_id,
-                    payment_date,
-                    amount: new_payment_amount,
-                    method: payment_method,
-                    currency: currentInvoice.currency
-                });
-        } catch (e) {
-            // If payments table doesn't exist, skip without failing
-            console.warn("Skipping payment log:", e);
-        }
+        await conn.execute<ResultSetHeader>(
+            `INSERT INTO payments 
+                (invoice_id, payment_date, amount, method, currency)
+            VALUES (?, ?, ?, ?, ?)`,
+            [invoice_id, payment_date, new_payment_amount, payment_method, currentInvoice.currency]
+        );
+
+
+        await conn.end();
 
         return NextResponse.json({ message: "Payment recorded successfully", new_status: newStatus });
     } catch (error) {
