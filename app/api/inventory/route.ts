@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getConnection } from "@/lib/db";
+import { ResultSetHeader } from "mysql2";
 
 // ✅ READ (Get all inventory items)
 export async function GET() {
@@ -14,8 +15,8 @@ export async function POST(request: Request) {
   const data = await request.json();
   const conn = await getConnection();
 
-  const [result] = await conn.execute(
-    `INSERT INTO inventory 
+  const [result] = await conn.execute<ResultSetHeader>(
+    `INSERT INTO inventory
       (imei, model, name, price, offer_price, quantity, status, updated_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
