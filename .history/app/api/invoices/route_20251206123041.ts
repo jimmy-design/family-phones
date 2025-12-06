@@ -12,8 +12,7 @@ interface InvoiceItem {
 // GET - Fetch all invoices with customer name
 export async function GET() {
   try {
-    // First, try to fetch invoices with customer relation
-    let { data: rows, error } = await supabase
+    const { data: rows, error } = await supabase
       .from("invoices")
       .select(`
         id,
@@ -41,49 +40,19 @@ export async function GET() {
       `)
       .order("created_at", { ascending: false });
 
-    // If the join fails, try without the customer relation
     if (error) {
-      console.error("Error fetching invoices with join, trying without:", error);
-      const result = await supabase
-        .from("invoices")
-        .select("*")
-        .order("created_at", { ascending: false });
-      
-      if (result.error) {
-        console.error("Error fetching invoices:", result.error);
-        return NextResponse.json({ error: "Failed to fetch invoices: " + result.error.message }, { status: 500 });
-      }
-      rows = result.data;
+      console.error("Error fetching invoices:", error);
+      return NextResponse.json({ error: "Failed to fetch invoices" }, { status: 500 });
     }
 
-    // Fetch all customers for mapping
-    const { data: customers } = await supabase
-      .from("customers")
-      .select("customer_id, full_name");
-
-    const customerMap = new Map(
-      (customers || []).map((c: { customer_id: number; full_name: string }) => [c.customer_id, c.full_name])
-    );
-
     // Transform the data to match the expected format
-    const transformedRows = (rows || []).map((row: Record<string, unknown>) => {
-      const totalAmount = Number(row.total_amount) || 0;
-      const amountPaid = Number(row.amount_paid) || 0;
-      const balanceDue = row.balance_due !== undefined && row.balance_due !== null
-        ? Number(row.balance_due)
-        : totalAmount - amountPaid;
-      
-      return {
-        ...row,
-        customer_name: (row.customers as { full_name?: string } | null)?.full_name ||
-                       customerMap.get(row.customer_id as number) ||
-                       null,
-        balance_due: balanceDue,
-        customers: undefined
-      };
-    });
+    const transformedRows = rows?.map((row: Record<string, unknown>) => ({
+      ...row,
+      customer_name: (row.customers as { full_name?: string } | null)?.full_name || null,
+      customers: undefined
+    }));
 
-    return NextResponse.json(transformedRows);
+    return NextResponse.json(transformedRows || []);
   } catch (error) {
     console.error("Error fetching invoices:", error);
     return NextResponse.json({ error: "Failed to fetch invoices" }, { status: 500 });
@@ -118,11 +87,6 @@ export async function POST(request: Request) {
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
     const invoice_number = `${prefix}-${dateStr}-${random}`;
 
-    // Calculate balance_due
-    const totalAmt = total_amount !== undefined ? Number(total_amount) : 0;
-    const paidAmt = amount_paid !== undefined ? Number(amount_paid) : 0;
-    const balance_due = totalAmt - paidAmt;
-
     // Insert invoice into database
     const { data: result, error: invoiceError } = await supabase
       .from("invoices")
@@ -134,9 +98,8 @@ export async function POST(request: Request) {
         subtotal: subtotal !== undefined ? subtotal : 0,
         tax_amount: tax_amount !== undefined ? tax_amount : 0,
         discount_amount: discount_amount !== undefined ? discount_amount : 0,
-        total_amount: totalAmt,
-        amount_paid: paidAmt,
-        balance_due: balance_due,
+        total_amount: total_amount !== undefined ? total_amount : 0,
+        amount_paid: amount_paid !== undefined ? amount_paid : 0,
         payment_status: payment_status || "Unpaid",
         payment_method: payment_method || null,
         currency: currency || "KES",

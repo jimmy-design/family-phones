@@ -118,11 +118,6 @@ export async function POST(request: Request) {
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
     const invoice_number = `${prefix}-${dateStr}-${random}`;
 
-    // Calculate balance_due
-    const totalAmt = total_amount !== undefined ? Number(total_amount) : 0;
-    const paidAmt = amount_paid !== undefined ? Number(amount_paid) : 0;
-    const balance_due = totalAmt - paidAmt;
-
     // Insert invoice into database
     const { data: result, error: invoiceError } = await supabase
       .from("invoices")
@@ -134,9 +129,8 @@ export async function POST(request: Request) {
         subtotal: subtotal !== undefined ? subtotal : 0,
         tax_amount: tax_amount !== undefined ? tax_amount : 0,
         discount_amount: discount_amount !== undefined ? discount_amount : 0,
-        total_amount: totalAmt,
-        amount_paid: paidAmt,
-        balance_due: balance_due,
+        total_amount: total_amount !== undefined ? total_amount : 0,
+        amount_paid: amount_paid !== undefined ? amount_paid : 0,
         payment_status: payment_status || "Unpaid",
         payment_method: payment_method || null,
         currency: currency || "KES",
