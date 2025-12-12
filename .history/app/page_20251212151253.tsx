@@ -1903,28 +1903,6 @@ const printInvoice = () => {
         }}
       />
 
-      {/* Add Customer Modal */}
-      <AddCustomerModal
-        isOpen={isAddCustomerModalOpen}
-        onClose={() => setIsAddCustomerModalOpen(false)}
-        onCustomerAdded={async () => {
-          // Refresh customers data
-          try {
-            const res = await fetch("/api/customers");
-            if (res.ok) {
-              const data = await res.json();
-              setCustomers(data || []);
-              // Also refresh dataRows if we're on the Customers feature
-              if (activeFeature === "Customers") {
-                setDataRows(data || []);
-              }
-            }
-          } catch (err) {
-            console.error("Failed to refresh customers:", err);
-          }
-        }}
-      />
-
       {/* Bottom Nav */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 z-50">
         <BottomNav

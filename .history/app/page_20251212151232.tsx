@@ -874,13 +874,6 @@ const printInvoice = () => {
                         Update
                       </button>
                     </>
-                  ) : activeFeature === "Customers" ? (
-                    <button
-                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
-                      onClick={() => setIsAddCustomerModalOpen(true)}
-                    >
-                      Add
-                    </button>
                   ) : (
                     <button
                       className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
@@ -1899,28 +1892,6 @@ const printInvoice = () => {
             } catch (err) {
               console.error("Failed to refresh invoices:", err);
             }
-          }
-        }}
-      />
-
-      {/* Add Customer Modal */}
-      <AddCustomerModal
-        isOpen={isAddCustomerModalOpen}
-        onClose={() => setIsAddCustomerModalOpen(false)}
-        onCustomerAdded={async () => {
-          // Refresh customers data
-          try {
-            const res = await fetch("/api/customers");
-            if (res.ok) {
-              const data = await res.json();
-              setCustomers(data || []);
-              // Also refresh dataRows if we're on the Customers feature
-              if (activeFeature === "Customers") {
-                setDataRows(data || []);
-              }
-            }
-          } catch (err) {
-            console.error("Failed to refresh customers:", err);
           }
         }}
       />
