@@ -376,7 +376,12 @@ export default function Invoices() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.currency} {invoice.amount_paid.toFixed(2)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.currency} {invoice.balance_due?.toFixed(2) || "0.00"}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-gray-700">{invoice.payment_status || "Unpaid"}</span>
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                      ${invoice.payment_status === "Paid" ? "bg-green-100 text-green-800" : 
+                        invoice.payment_status === "Partially Paid" ? "bg-yellow-100 text-yellow-800" : 
+                        "bg-red-100 text-red-800"}`}>
+                      {invoice.payment_status}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <button 
@@ -521,7 +526,6 @@ export default function Invoices() {
                       name="tax_amount"
                       value={formData.tax_amount}
                       onChange={handleInputChange}
-                      readOnly={taxType !== "none"}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       step="0.01"
                     />
@@ -541,19 +545,6 @@ export default function Invoices() {
                 </div>
                 
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Tax</label>
-                  <select
-                    name="tax"
-                    value={taxType}
-                    onChange={(e) => setTaxType(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md mb-3"
-                  >
-                    <option value="none">None</option>
-                    <option value="vat">VAT (16%)</option>
-                    <option value="levy">Levy (1.5%)</option>
-                    <option value="withholding">Withholding Tax (5%)</option>
-                  </select>
-
                   <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
                   <textarea
                     name="notes"

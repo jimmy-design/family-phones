@@ -1689,8 +1689,11 @@ const printInvoice = () => {
                   </h2>
                   <p className="text-xs text-gray-600">#{selectedInvoiceDetail.invoice_number}</p>
                   <div className="mt-2">
-                    <span className="text-sm font-semibold text-gray-700">
-                      {selectedInvoiceDetail.payment_status || "Unpaid"}
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                      }">
+                      <span className="text-sm font-semibold text-gray-700">
+                        {selectedInvoiceDetail.payment_status || "Unpaid"}
+                      </span>
                     </span>
                   </div>
                 </div>

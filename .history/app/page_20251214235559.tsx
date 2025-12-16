@@ -1689,7 +1689,12 @@ const printInvoice = () => {
                   </h2>
                   <p className="text-xs text-gray-600">#{selectedInvoiceDetail.invoice_number}</p>
                   <div className="mt-2">
-                    <span className="text-sm font-semibold text-gray-700">
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                      selectedInvoiceDetail.payment_status === "Paid" ? "bg-green-100 text-green-700" :
+                      selectedInvoiceDetail.payment_status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
+                      selectedInvoiceDetail.payment_status === "Overdue" ? "bg-red-100 text-red-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>
                       {selectedInvoiceDetail.payment_status || "Unpaid"}
                     </span>
                   </div>

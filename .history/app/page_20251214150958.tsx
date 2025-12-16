@@ -512,18 +512,6 @@ export default function HomePage() {
     return invoiceItems.reduce((sum, item) => sum + item.amount, 0);
   };
 
-  // Recalculate tax amount when tax type or invoice items change
-  useEffect(() => {
-    const subtotal = calculateInvoiceTotal();
-    let percent = 0;
-    if (taxType === "vat") percent = 0.16;
-    else if (taxType === "levy") percent = 0.015;
-    else if (taxType === "withholding") percent = 0.05;
-
-    const newTax = +(subtotal * percent).toFixed(2);
-    setTaxAmount(newTax);
-  }, [taxType, invoiceItems]);
-
   const handleGenerateInvoice = async () => {
     if (!invoiceCustomerId) {
       alert("Please select a customer");
@@ -551,6 +539,7 @@ export default function HomePage() {
     setIsSubmitting(true);
 
     const subtotal = calculateInvoiceTotal();
+    const taxAmount = 0;
     const discountAmount = 0;
     const totalAmount = subtotal + taxAmount - discountAmount;
 
@@ -612,8 +601,6 @@ export default function HomePage() {
       setInvoiceDate("");
       setDueDate("");
       setNotes("");
-      setTaxType("none");
-      setTaxAmount(0);
       setInvoiceType("invoice");
     } catch (err) {
       console.error(err);
@@ -829,8 +816,6 @@ const printInvoice = () => {
     setInvoiceDate("");
     setDueDate("");
     setNotes("");
-    setTaxType("none");
-    setTaxAmount(0);
     setInvoiceType("invoice");
   };
 
@@ -976,7 +961,12 @@ const printInvoice = () => {
                                 <span>{row.subtotal || 0}</span>
                               </div>
                               <div className="flex-shrink-0 ml-2">
-                                <span className="text-[9px] font-semibold text-gray-700">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                  row.payment_status === "Paid" ? "bg-green-100 text-green-700" :
+                                  row.payment_status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
+                                  row.payment_status === "Overdue" ? "bg-red-100 text-red-700" :
+                                  "bg-gray-100 text-gray-700"
+                                }`}>
                                   {row.payment_status || "Unpaid"}
                                 </span>
                               </div>
@@ -1581,21 +1571,8 @@ const printInvoice = () => {
                 </div>
               </div>
 
-              {/* Tax selection */}
+              {/* Notes */}
               <div className="mt-2">
-                <label className="block text-[9px] font-semibold mb-0.5">Tax</label>
-                <select
-                  value={taxType}
-                  onChange={(e) => setTaxType(e.target.value)}
-                  className="w-full p-1 border rounded text-[10px] mb-2"
-                >
-                  <option value="none">None</option>
-                  <option value="vat">VAT (16%)</option>
-                  <option value="levy">Levy (1.5%)</option>
-                  <option value="withholding">Withholding Tax (5%)</option>
-                </select>
-
-                {/* Notes */}
                 <label className="block text-[9px] font-semibold mb-0.5">Notes</label>
                 <textarea
                   className="w-full p-1 border rounded text-[10px]"
@@ -1617,8 +1594,8 @@ const printInvoice = () => {
                     <span className="font-semibold">{calculateInvoiceTotal().toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center text-[9px]">
-                    <span className="text-gray-600">Tax ({taxType === 'vat' ? '16%' : taxType === 'levy' ? '1.5%' : taxType === 'withholding' ? '5%' : '0%'}):</span>
-                    <span className="font-semibold">{taxAmount.toFixed(2)}</span>
+                    <span className="text-gray-600">Tax (0%):</span>
+                    <span className="font-semibold">0.00</span>
                   </div>
                   <div className="pt-0.5 border-t border-blue-300">
                     <div className="flex justify-between items-center">
@@ -1689,7 +1666,12 @@ const printInvoice = () => {
                   </h2>
                   <p className="text-xs text-gray-600">#{selectedInvoiceDetail.invoice_number}</p>
                   <div className="mt-2">
-                    <span className="text-sm font-semibold text-gray-700">
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                      selectedInvoiceDetail.payment_status === "Paid" ? "bg-green-100 text-green-700" :
+                      selectedInvoiceDetail.payment_status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
+                      selectedInvoiceDetail.payment_status === "Overdue" ? "bg-red-100 text-red-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>
                       {selectedInvoiceDetail.payment_status || "Unpaid"}
                     </span>
                   </div>
