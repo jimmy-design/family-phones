@@ -10,7 +10,6 @@ import html2canvas from "html2canvas";
 import { FiLogOut } from "react-icons/fi";
 import PaymentModal from '@/components/PaymentModal';
 import AddCustomerModal from '@/components/AddCustomerModal';
-import AddStaffModal from '@/components/AddStaffModal';
 
 /* ----- Types ----- */
 interface InventoryItem {
@@ -68,7 +67,6 @@ export default function HomePage() {
   const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
-  const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
 
   /* ----- Data ----- */
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -78,167 +76,7 @@ export default function HomePage() {
   /* ----- Modal & selection state ----- */
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-
-  const [saleType, setSaleType] = useState<"normal" | "lpp">("normal");
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
-  const [depositAmount, setDepositAmount] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<
-    "Cash" | "Mpesa" | "Card" | "Bank" | "Credit"
-  >("Cash");
-
-  /* ----- Customer search UI for LPP ----- */
-  const [customerSearch, setCustomerSearch] = useState("");
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-
-  /* ----- Confirmation modal ----- */
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  /* ----- Invoice/Quotation Modal State ----- */
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [invoiceType, setInvoiceType] = useState<"invoice" | "quotation">("invoice");
-  const [invoiceCustomerId, setInvoiceCustomerId] = useState<number>(0);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
-    { id: "1", description: "", quantity: 1, rate: 0, amount: 0 }
-  ]);
-  const [invoiceDate, setInvoiceDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [taxType, setTaxType] = useState<string>("none");
-  const [taxAmount, setTaxAmount] = useState<number>(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  /* ----- Invoice Confirm Modal State ----- */
-  const [invoiceConfirmOpen, setInvoiceConfirmOpen] = useState(false);
-  const [invoiceSuccessOpen, setInvoiceSuccessOpen] = useState(false);
-  const [createdInvoiceNumber, setCreatedInvoiceNumber] = useState("");
-  
-  /* ----- Invoice Detail View State ----- */
-  const [selectedInvoiceDetail, setSelectedInvoiceDetail] = useState<any>(null);
-  const [invoiceDetailItems, setInvoiceDetailItems] = useState<any[]>([]);
-
-  /* ----- Stats / content map ----- */
-  const stats = {
-    ledger: [
-      { label: "Sales Today", value: "14,200" },
-      { label: "Expenses", value: "3,500" },
-      { label: "New Customers", value: "8" },
-    ],
-    debt: [
-      { label: "Debts Today", value: "12" },
-      { label: "Pending Debts", value: "34" },
-      { label: "Customers in Debt", value: "27" },
-    ],
-    wallet: [
-      { label: "Wallet Balance", value: "25,000" },
-      { label: "Pending Approvals", value: "3" },
-      { label: "Transactions", value: "58" },
-    ],
-    business: [
-      { label: "Suppliers", value: "14" },
-      { label: "Staff Members", value: "7" },
-      { label: "Active Services", value: "12" },
-    ],
-  };
-
-  const contentMap = {
-    ledger: {
-      title: "Cashbook",
-      gradient: "from-green-500/90 via-emerald-500/80 to-lime-400/90",
-      stats: stats.ledger,
-      features: ["Sales", "Expenses", "Inventory", "Purchases"],
-    },
-    debt: {
-      title: "Debt Management",
-      gradient: "from-blue-500/90 via-indigo-500/80 to-blue-400/90",
-      stats: stats.debt,
-      features: [
-        "Add New Balance",
-        "Send Reminder",
-        "Recorded Payments",
-        "Invoices & Quotations",
-      ],
-    },
-    wallet: {
-      title: "Wallet",
-      gradient: "from-indigo-500/90 via-blue-500/80 to-cyan-400/90",
-      stats: stats.wallet,
-      features: ["Pay", "Deposit", "Withdraw", "Approvals"],
-    },
-    business: {
-      title: "Business Management",
-      gradient: "from-amber-500/90 via-orange-500/80 to-yellow-400/90",
-      stats: stats.business,
-      features: [
-        "My Services",
-        "Customers",
-        "Suppliers",
-        "Staff Management",
-        "Repeating Balances",
-        "Payment Options",
-      ],
-    },
-  };
-
-  const current =
-    contentMap[activeTab as keyof typeof contentMap] ?? contentMap["ledger"];
-
-  const isInvoiceFeature = activeFeature?.toLowerCase().includes("invoice") ||
-                          activeFeature?.toLowerCase().includes("quotation");
-
-  /* ----- Fetch initial data ----- */
-  useEffect(() => {
-    const fetchInventory = async () => {
-      try {
-        const res = await fetch("/api/inventory");
-        if (res.ok) {
-          const items = await res.json();
-          setInventory(items || []);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    const fetchCustomers = async () => {
-      try {
-        const res = await fetch("/api/customers");
-        if (res.ok) {
-          const data = await res.json();
-          setCustomers(data || []);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchInventory();
-    fetchCustomers();
-  }, []);
-
-  /* ----- Fetch sales when user selects Sales feature ----- */
-  useEffect(() => {
-    if (activeFeature !== "Sales") return;
-
-    const fetchSales = async () => {
-      try {
-        const res = await fetch("/api/sales");
-        if (res.ok) {
-          const data = await res.json();
-          setDataRows(data || []);
-          setSales(data || []);
-        } else {
-          setDataRows([]);
-        }
-      } catch (err) {
-        console.error("Error fetching sales:", err);
-        setDataRows([]);
-      }
-    };
-
-    fetchSales();
-  }, [activeFeature]);
+ 
 
   /* ----- Generic feature fetch ----- */
   useEffect(() => {
@@ -247,7 +85,7 @@ export default function HomePage() {
     const fetchData = async () => {
       try {
         let endpoint = "";
-        
+
         // Map feature names to API endpoints
         const featureEndpointMap: { [key: string]: string } = {
           "Customers": "/api/customers",
@@ -268,7 +106,7 @@ export default function HomePage() {
           "Expenses": "/api/expenses",
           "Purchases": "/api/purchases",
         };
-        
+
         if (featureEndpointMap[activeFeature]) {
           endpoint = featureEndpointMap[activeFeature];
         } else if (
@@ -338,21 +176,6 @@ export default function HomePage() {
       keys = keys.filter((k) => !excludedCols.includes(k.toLowerCase().replace(/_/g, "").replace(/ /g, "")));
     }
     return keys;
-  };
-
-  const renderCell = (row: any, key: string) => {
-    const val = row[key];
-    if (val === null || val === undefined) return "";
-    const keyNormalized = key.toLowerCase();
-    if (keyNormalized.includes("status")) {
-      const isActive = String(val).toLowerCase() === "active";
-      return (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-sm font-semibold ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
-          {String(val)}
-        </span>
-      );
-    }
-    return String(val);
   };
 
   /* ----- Auto-select exact item matches ----- */
@@ -945,13 +768,6 @@ const printInvoice = () => {
                     >
                       Add
                     </button>
-                  ) : activeFeature === "Staff Management" ? (
-                    <button
-                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
-                      onClick={() => setIsAddStaffModalOpen(true)}
-                    >
-                      Add
-                    </button>
                   ) : (
                     <button
                       className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
@@ -1059,29 +875,6 @@ const printInvoice = () => {
                           </div>
                         ))}
                       </div>
-                    ) : activeFeature === "Staff Management" ? (
-                      /* Mobile View - Card Layout for Staff Management (like invoices) */
-                      <div className="md:hidden px-0 py-2 space-y-3">
-                        {filteredRows.map((row, i) => {
-                          const fullName = row.first_name || row.full_name || `${row.firstName || ""} ${row.lastName || ""}`.trim() || "—";
-                          return (
-                            <div key={i} className="py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg">
-                              <div className="flex justify-between items-start mb-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold truncate text-sm text-gray-800">{fullName}</div>
-                                  <div className="text-xs text-gray-500 truncate">{row.job_title || row.jobTitle || row.department || ""}</div>
-                                </div>
-                                <div className="flex-shrink-0 ml-3">{renderCell(row, "status")}</div>
-                              </div>
-
-                              <div className="flex justify-between items-center text-[12px] text-gray-600">
-                                <div className="flex-1 min-w-0 truncate">{row.email || row.phone || "—"}</div>
-                                <div className="flex-shrink-0 ml-3 text-sm font-semibold">{row.salary ?? ""}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
                     ) : (
                       /* Mobile View - Default Table for other features */
                       <div className="md:hidden">
@@ -1099,7 +892,7 @@ const printInvoice = () => {
                             {filteredRows.map((row, i) => (
                               <tr key={i} className="border-b hover:bg-gray-50">
                                 {getOrderedKeys(row).map((key, j) => (
-                                  <td key={j} className="p-3">{renderCell(row, key)}</td>
+                                  <td key={j} className="p-3">{row[key]?.toString()}</td>
                                 ))}
                               </tr>
                             ))}
@@ -1126,7 +919,7 @@ const printInvoice = () => {
                         {filteredRows.map((row, i) => (
                           <tr key={i} className="border-b hover:bg-gray-50">
                             {getOrderedKeys(row).map((key, j) => (
-                              <td key={j} className="p-3">{renderCell(row, key)}</td>
+                              <td key={j} className="p-3">{row[key]?.toString()}</td>
                             ))}
                             {activeFeature === "Invoices & Quotations" && (
                               <td className="p-3">
@@ -2035,28 +1828,6 @@ const printInvoice = () => {
             }
           } catch (err) {
             console.error("Failed to refresh customers:", err);
-          }
-        }}
-      />
-
-      {/* Add Staff Modal */}
-      <AddStaffModal
-        isOpen={isAddStaffModalOpen}
-        onClose={() => setIsAddStaffModalOpen(false)}
-        onSuccess={async () => {
-          try {
-            const res = await fetch("/api/staff-management");
-            if (res.ok) {
-              const data = await res.json();
-              // If we're viewing Staff Management, refresh rows
-              if (activeFeature === "Staff Management") {
-                if (Array.isArray(data)) setDataRows(data || []);
-                else if (data && Array.isArray((data as any).data)) setDataRows((data as any).data || []);
-                else setDataRows([data]);
-              }
-            }
-          } catch (err) {
-            console.error("Failed to refresh staff data:", err);
           }
         }}
       />

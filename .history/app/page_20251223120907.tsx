@@ -340,21 +340,6 @@ export default function HomePage() {
     return keys;
   };
 
-  const renderCell = (row: any, key: string) => {
-    const val = row[key];
-    if (val === null || val === undefined) return "";
-    const keyNormalized = key.toLowerCase();
-    if (keyNormalized.includes("status")) {
-      const isActive = String(val).toLowerCase() === "active";
-      return (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-sm font-semibold ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
-          {String(val)}
-        </span>
-      );
-    }
-    return String(val);
-  };
-
   /* ----- Auto-select exact item matches ----- */
   useEffect(() => {
     if (!query) {
@@ -1059,29 +1044,6 @@ const printInvoice = () => {
                           </div>
                         ))}
                       </div>
-                    ) : activeFeature === "Staff Management" ? (
-                      /* Mobile View - Card Layout for Staff Management (like invoices) */
-                      <div className="md:hidden px-0 py-2 space-y-3">
-                        {filteredRows.map((row, i) => {
-                          const fullName = row.first_name || row.full_name || `${row.firstName || ""} ${row.lastName || ""}`.trim() || "—";
-                          return (
-                            <div key={i} className="py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg">
-                              <div className="flex justify-between items-start mb-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold truncate text-sm text-gray-800">{fullName}</div>
-                                  <div className="text-xs text-gray-500 truncate">{row.job_title || row.jobTitle || row.department || ""}</div>
-                                </div>
-                                <div className="flex-shrink-0 ml-3">{renderCell(row, "status")}</div>
-                              </div>
-
-                              <div className="flex justify-between items-center text-[12px] text-gray-600">
-                                <div className="flex-1 min-w-0 truncate">{row.email || row.phone || "—"}</div>
-                                <div className="flex-shrink-0 ml-3 text-sm font-semibold">{row.salary ?? ""}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
                     ) : (
                       /* Mobile View - Default Table for other features */
                       <div className="md:hidden">
@@ -1099,7 +1061,7 @@ const printInvoice = () => {
                             {filteredRows.map((row, i) => (
                               <tr key={i} className="border-b hover:bg-gray-50">
                                 {getOrderedKeys(row).map((key, j) => (
-                                  <td key={j} className="p-3">{renderCell(row, key)}</td>
+                                  <td key={j} className="p-3">{row[key]?.toString()}</td>
                                 ))}
                               </tr>
                             ))}
@@ -1126,7 +1088,7 @@ const printInvoice = () => {
                         {filteredRows.map((row, i) => (
                           <tr key={i} className="border-b hover:bg-gray-50">
                             {getOrderedKeys(row).map((key, j) => (
-                              <td key={j} className="p-3">{renderCell(row, key)}</td>
+                              <td key={j} className="p-3">{row[key]?.toString()}</td>
                             ))}
                             {activeFeature === "Invoices & Quotations" && (
                               <td className="p-3">

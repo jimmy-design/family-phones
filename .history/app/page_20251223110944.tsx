@@ -10,7 +10,6 @@ import html2canvas from "html2canvas";
 import { FiLogOut } from "react-icons/fi";
 import PaymentModal from '@/components/PaymentModal';
 import AddCustomerModal from '@/components/AddCustomerModal';
-import AddStaffModal from '@/components/AddStaffModal';
 
 /* ----- Types ----- */
 interface InventoryItem {
@@ -68,7 +67,6 @@ export default function HomePage() {
   const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
-  const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
 
   /* ----- Data ----- */
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -78,177 +76,379 @@ export default function HomePage() {
   /* ----- Modal & selection state ----- */
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+      {/* Add Modal - shows sale modal or staff registration modal depending on active feature */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-[450px] max-w-full shadow-lg">
+            {activeFeature === "Staff Management" ? (
+              <>
+                <h2 className="text-xl font-bold mb-4">Register Staff</h2>
 
-  const [saleType, setSaleType] = useState<"normal" | "lpp">("normal");
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
-  const [depositAmount, setDepositAmount] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<
-    "Cash" | "Mpesa" | "Card" | "Bank" | "Credit"
-  >("Cash");
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <input
+                    type="text"
+                    placeholder="First name"
+                    value={staffFirstName}
+                    onChange={(e) => setStaffFirstName(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Last name"
+                    value={staffLastName}
+                    onChange={(e) => setStaffLastName(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                </div>
 
-  /* ----- Customer search UI for LPP ----- */
-  const [customerSearch, setCustomerSearch] = useState("");
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+                <div className="mb-3">
+                  <input
+                    type="email"
+                    placeholder="Email (optional)"
+                    value={staffEmail}
+                    onChange={(e) => setStaffEmail(e.target.value)}
+                    className="w-full p-2 border rounded-lg mb-2"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Phone (optional)"
+                    value={staffPhone}
+                    onChange={(e) => setStaffPhone(e.target.value)}
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
 
-  /* ----- Confirmation modal ----- */
-  const [confirmOpen, setConfirmOpen] = useState(false);
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <input
+                    type="text"
+                    placeholder="Job title"
+                    value={staffJobTitle}
+                    onChange={(e) => setStaffJobTitle(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Department"
+                    value={staffDepartment}
+                    onChange={(e) => setStaffDepartment(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                </div>
 
-  /* ----- Invoice/Quotation Modal State ----- */
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [invoiceType, setInvoiceType] = useState<"invoice" | "quotation">("invoice");
-  const [invoiceCustomerId, setInvoiceCustomerId] = useState<number>(0);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
-    { id: "1", description: "", quantity: 1, rate: 0, amount: 0 }
-  ]);
-  const [invoiceDate, setInvoiceDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [taxType, setTaxType] = useState<string>("none");
-  const [taxAmount, setTaxAmount] = useState<number>(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  /* ----- Invoice Confirm Modal State ----- */
-  const [invoiceConfirmOpen, setInvoiceConfirmOpen] = useState(false);
-  const [invoiceSuccessOpen, setInvoiceSuccessOpen] = useState(false);
-  const [createdInvoiceNumber, setCreatedInvoiceNumber] = useState("");
-  
-  /* ----- Invoice Detail View State ----- */
-  const [selectedInvoiceDetail, setSelectedInvoiceDetail] = useState<any>(null);
-  const [invoiceDetailItems, setInvoiceDetailItems] = useState<any[]>([]);
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Salary"
+                    value={staffSalary}
+                    onChange={(e) => setStaffSalary(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                  <input
+                    type="date"
+                    placeholder="Hire date"
+                    value={staffHireDate}
+                    onChange={(e) => setStaffHireDate(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                </div>
 
-  /* ----- Stats / content map ----- */
-  const stats = {
-    ledger: [
-      { label: "Sales Today", value: "14,200" },
-      { label: "Expenses", value: "3,500" },
-      { label: "New Customers", value: "8" },
-    ],
-    debt: [
-      { label: "Debts Today", value: "12" },
-      { label: "Pending Debts", value: "34" },
-      { label: "Customers in Debt", value: "27" },
-    ],
-    wallet: [
-      { label: "Wallet Balance", value: "25,000" },
-      { label: "Pending Approvals", value: "3" },
-      { label: "Transactions", value: "58" },
-    ],
-    business: [
-      { label: "Suppliers", value: "14" },
-      { label: "Staff Members", value: "7" },
-      { label: "Active Services", value: "12" },
-    ],
-  };
+                <div className="mb-4">
+                  <label className="block text-sm mb-1">Status</label>
+                  <select
+                    className="w-full p-2 border rounded-lg"
+                    value={staffStatus}
+                    onChange={(e) => setStaffStatus(e.target.value)}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
 
-  const contentMap = {
-    ledger: {
-      title: "Cashbook",
-      gradient: "from-green-500/90 via-emerald-500/80 to-lime-400/90",
-      stats: stats.ledger,
-      features: ["Sales", "Expenses", "Inventory", "Purchases"],
-    },
-    debt: {
-      title: "Debt Management",
-      gradient: "from-blue-500/90 via-indigo-500/80 to-blue-400/90",
-      stats: stats.debt,
-      features: [
-        "Add New Balance",
-        "Send Reminder",
-        "Recorded Payments",
-        "Invoices & Quotations",
-      ],
-    },
-    wallet: {
-      title: "Wallet",
-      gradient: "from-indigo-500/90 via-blue-500/80 to-cyan-400/90",
-      stats: stats.wallet,
-      features: ["Pay", "Deposit", "Withdraw", "Approvals"],
-    },
-    business: {
-      title: "Business Management",
-      gradient: "from-amber-500/90 via-orange-500/80 to-yellow-400/90",
-      stats: stats.business,
-      features: [
-        "My Services",
-        "Customers",
-        "Suppliers",
-        "Staff Management",
-        "Repeating Balances",
-        "Payment Options",
-      ],
-    },
-  };
+                <div className="flex justify-end gap-2">
+                  <button
+                    className="px-4 py-2 rounded-lg bg-gray-200"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setStaffFirstName("");
+                      setStaffLastName("");
+                      setStaffEmail("");
+                      setStaffPhone("");
+                      setStaffJobTitle("");
+                      setStaffDepartment("");
+                      setStaffSalary("");
+                      setStaffHireDate("");
+                      setStaffStatus("Active");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white"
+                    onClick={async () => {
+                      if (!staffFirstName.trim() || !staffLastName.trim()) {
+                        alert("Please provide first and last name.");
+                        return;
+                      }
+                      setStaffSubmitting(true);
+                      try {
+                        const payload = {
+                          first_name: staffFirstName.trim(),
+                          last_name: staffLastName.trim(),
+                          email: staffEmail.trim() || null,
+                          phone: staffPhone.trim() || null,
+                          job_title: staffJobTitle.trim() || null,
+                          department: staffDepartment.trim() || null,
+                          salary: staffSalary !== "" ? Number(staffSalary) : null,
+                          hire_date: staffHireDate || null,
+                          status: staffStatus,
+                        };
 
-  const current =
-    contentMap[activeTab as keyof typeof contentMap] ?? contentMap["ledger"];
+                        const res = await fetch("/api/staff-management", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(payload),
+                        });
 
-  const isInvoiceFeature = activeFeature?.toLowerCase().includes("invoice") ||
-                          activeFeature?.toLowerCase().includes("quotation");
+                        if (!res.ok) {
+                          const txt = await res.text();
+                          console.error("Failed to add staff:", txt);
+                          alert("Failed to add staff. See console for details.");
+                          setStaffSubmitting(false);
+                          return;
+                        }
 
-  /* ----- Fetch initial data ----- */
-  useEffect(() => {
-    const fetchInventory = async () => {
-      try {
-        const res = await fetch("/api/inventory");
-        if (res.ok) {
-          const items = await res.json();
-          setInventory(items || []);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+                        const result = await res.json();
+                        const inserted = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
+                        if (inserted.length > 0) setDataRows((prev) => [inserted[0], ...prev]);
 
-    const fetchCustomers = async () => {
-      try {
-        const res = await fetch("/api/customers");
-        if (res.ok) {
-          const data = await res.json();
-          setCustomers(data || []);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+                        // Reset
+                        setIsModalOpen(false);
+                        setStaffFirstName("");
+                        setStaffLastName("");
+                        setStaffEmail("");
+                        setStaffPhone("");
+                        setStaffJobTitle("");
+                        setStaffDepartment("");
+                        setStaffSalary("");
+                        setStaffHireDate("");
+                        setStaffStatus("Active");
 
-    fetchInventory();
-    fetchCustomers();
-  }, []);
+                        alert("Staff member added.");
+                      } catch (err) {
+                        console.error(err);
+                        alert("Error adding staff. See console.");
+                      } finally {
+                        setStaffSubmitting(false);
+                      }
+                    }}
+                    disabled={staffSubmitting}
+                  >
+                    {staffSubmitting ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold mb-4">Add Sale</h2>
 
-  /* ----- Fetch sales when user selects Sales feature ----- */
-  useEffect(() => {
-    if (activeFeature !== "Sales") return;
+                <div className="mb-3">
+                  <label className="mr-4">
+                    <input
+                      type="radio"
+                      name="saleType"
+                      value="normal"
+                      checked={saleType === "normal"}
+                      onChange={() => {
+                        setSaleType("normal");
+                        setCustomerSearch("");
+                        setFilteredCustomers([]);
+                        setSelectedCustomer(null);
+                      }}
+                    />{" "}
+                    Normal
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="saleType"
+                      value="lpp"
+                      checked={saleType === "lpp"}
+                      onChange={() => {
+                        setSaleType("lpp");
+                        setSelectedCustomerId(0);
+                      }}
+                    />{" "}
+                    Lipa Pole Pole
+                  </label>
+                </div>
 
-    const fetchSales = async () => {
-      try {
-        const res = await fetch("/api/sales");
-        if (res.ok) {
-          const data = await res.json();
-          setDataRows(data || []);
-          setSales(data || []);
-        } else {
-          setDataRows([]);
-        }
-      } catch (err) {
-        console.error("Error fetching sales:", err);
-        setDataRows([]);
-      }
-    };
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Enter item name, model or IMEI..."
+                  className="w-full p-2 border rounded-lg mb-3"
+                />
 
-    fetchSales();
-  }, [activeFeature]);
+                {query && !selectedItem && (
+                  <div className="max-h-40 overflow-y-auto border rounded-lg mb-3">
+                    {inventory
+                      .filter(
+                        (i) =>
+                          (i.name && i.name.toLowerCase().includes(query.toLowerCase())) ||
+                          (i.model && i.model.toLowerCase().includes(query.toLowerCase())) ||
+                          (i.imei && i.imei.toLowerCase().includes(query.toLowerCase()))
+                      )
+                      .slice(0, 20)
+                      .map((item) => (
+                        <div
+                          key={`inv-${item.id}`}
+                          onClick={() => {
+                            setSelectedItem(item);
+                            setQuery(item.name || item.model || item.imei || "");
+                          }}
+                          className="p-2 cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="font-semibold">{item.name || item.model}</div>
+                          <div className="text-xs opacity-80">
+                            IMEI: {item.imei ?? "—"} • KES {displayPrice(item)}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
 
-  /* ----- Generic feature fetch ----- */
-  useEffect(() => {
-    if (!activeFeature || activeFeature === "Sales") return;
+                {selectedItem && (
+                  <div className="mb-3 p-3 border rounded-lg bg-gray-50">
+                    <div className="font-semibold text-lg">{selectedItem.name || selectedItem.model}</div>
+                    <div className="text-sm">Model: {selectedItem.model ?? "—"}</div>
+                    <div className="text-sm">IMEI: {selectedItem.imei ?? "—"}</div>
+                    <div className="text-sm">Price: KES {displayPrice(selectedItem)}</div>
+                    <div className="text-sm">Status: {selectedItem.status ?? "—"}</div>
+                  </div>
+                )}
 
-    const fetchData = async () => {
-      try {
-        let endpoint = "";
-        
-        // Map feature names to API endpoints
+                {saleType === "lpp" ? (
+                  <div className="mb-3">
+                    <label className="block text-sm mb-1">Search Customer</label>
+                    <input
+                      type="text"
+                      value={customerSearch}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        setSelectedCustomer(null);
+                      }}
+                      placeholder="Type customer name or phone..."
+                      className="w-full p-2 border rounded-lg"
+                    />
+
+                    {filteredCustomers.length > 0 && (
+                      <div className="max-h-36 overflow-y-auto border rounded-lg mt-2">
+                        {filteredCustomers.map((c) => (
+                          <div
+                            key={`cust-${c.customer_id}`}
+                            className="p-2 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => {
+                              setSelectedCustomer(c);
+                              setCustomerSearch(c.full_name);
+                              setFilteredCustomers([]);
+                            }}
+                          >
+                            <div className="font-semibold">{c.full_name}</div>
+                            <div className="text-xs opacity-80">
+                              {c.phone_number ?? "—"} {typeof c.amount_deposited !== "undefined" ? ` • Deposited: ${c.amount_deposited}` : ""}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedCustomer && (
+                      <div className="mt-2 text-sm bg-gray-50 p-2 rounded">
+                        Selected: <strong>{selectedCustomer.full_name}</strong>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-3">
+                    <label className="block text-sm mb-1">Customer (optional)</label>
+                    <select
+                      className="w-full p-2 border rounded-lg"
+                      value={selectedCustomerId}
+                      onChange={(e) => setSelectedCustomerId(Number(e.target.value))}
+                    >
+                      <option value={0}>Walk-in / No customer</option>
+                      {customers.map((c) => (
+                        <option key={`cust-${c.customer_id}`} value={c.customer_id}>
+                          {c.full_name} {c.phone_number ? `(${c.phone_number})` : ""} {typeof c.amount_deposited !== "undefined" ? `- Dep: ${c.amount_deposited}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-xs opacity-70 mt-1">
+                      For Lipa Pole Pole, use the search box above.
+                    </div>
+                  </div>
+                )}
+
+                {saleType === "lpp" && (
+                  <div className="mb-3">
+                    <label className="block text-sm mb-1">Deposit amount (KES)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      className="w-full p-2 border rounded-lg"
+                      placeholder="Enter deposit (partial) amount"
+                    />
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <label className="block text-sm mb-1">Payment method</label>
+                  <select
+                    className="w-full p-2 border rounded-lg"
+                    value={paymentMethod}
+                    onChange={(e) =>
+                      setPaymentMethod(e.target.value as "Cash" | "Mpesa" | "Card" | "Bank" | "Credit")
+                    }
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Mpesa">Mpesa</option>
+                    <option value="Card">Card</option>
+                    <option value="Bank">Bank</option>
+                    <option value="Credit">Credit</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    className="px-4 py-2 rounded-lg bg-gray-200"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setQuery("");
+                      setSelectedItem(null);
+                      setCustomerSearch("");
+                      setSelectedCustomer(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white"
+                    onClick={handleSaveClick}
+                  >
+                    Save Sale
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
         const featureEndpointMap: { [key: string]: string } = {
           "Customers": "/api/customers",
           "Inventory": "/api/inventory",
@@ -268,7 +468,7 @@ export default function HomePage() {
           "Expenses": "/api/expenses",
           "Purchases": "/api/purchases",
         };
-        
+
         if (featureEndpointMap[activeFeature]) {
           endpoint = featureEndpointMap[activeFeature];
         } else if (
@@ -338,21 +538,6 @@ export default function HomePage() {
       keys = keys.filter((k) => !excludedCols.includes(k.toLowerCase().replace(/_/g, "").replace(/ /g, "")));
     }
     return keys;
-  };
-
-  const renderCell = (row: any, key: string) => {
-    const val = row[key];
-    if (val === null || val === undefined) return "";
-    const keyNormalized = key.toLowerCase();
-    if (keyNormalized.includes("status")) {
-      const isActive = String(val).toLowerCase() === "active";
-      return (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-sm font-semibold ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
-          {String(val)}
-        </span>
-      );
-    }
-    return String(val);
   };
 
   /* ----- Auto-select exact item matches ----- */
@@ -945,13 +1130,6 @@ const printInvoice = () => {
                     >
                       Add
                     </button>
-                  ) : activeFeature === "Staff Management" ? (
-                    <button
-                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
-                      onClick={() => setIsAddStaffModalOpen(true)}
-                    >
-                      Add
-                    </button>
                   ) : (
                     <button
                       className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
@@ -1059,29 +1237,6 @@ const printInvoice = () => {
                           </div>
                         ))}
                       </div>
-                    ) : activeFeature === "Staff Management" ? (
-                      /* Mobile View - Card Layout for Staff Management (like invoices) */
-                      <div className="md:hidden px-0 py-2 space-y-3">
-                        {filteredRows.map((row, i) => {
-                          const fullName = row.first_name || row.full_name || `${row.firstName || ""} ${row.lastName || ""}`.trim() || "—";
-                          return (
-                            <div key={i} className="py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg">
-                              <div className="flex justify-between items-start mb-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold truncate text-sm text-gray-800">{fullName}</div>
-                                  <div className="text-xs text-gray-500 truncate">{row.job_title || row.jobTitle || row.department || ""}</div>
-                                </div>
-                                <div className="flex-shrink-0 ml-3">{renderCell(row, "status")}</div>
-                              </div>
-
-                              <div className="flex justify-between items-center text-[12px] text-gray-600">
-                                <div className="flex-1 min-w-0 truncate">{row.email || row.phone || "—"}</div>
-                                <div className="flex-shrink-0 ml-3 text-sm font-semibold">{row.salary ?? ""}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
                     ) : (
                       /* Mobile View - Default Table for other features */
                       <div className="md:hidden">
@@ -1099,7 +1254,7 @@ const printInvoice = () => {
                             {filteredRows.map((row, i) => (
                               <tr key={i} className="border-b hover:bg-gray-50">
                                 {getOrderedKeys(row).map((key, j) => (
-                                  <td key={j} className="p-3">{renderCell(row, key)}</td>
+                                  <td key={j} className="p-3">{row[key]?.toString()}</td>
                                 ))}
                               </tr>
                             ))}
@@ -1126,7 +1281,7 @@ const printInvoice = () => {
                         {filteredRows.map((row, i) => (
                           <tr key={i} className="border-b hover:bg-gray-50">
                             {getOrderedKeys(row).map((key, j) => (
-                              <td key={j} className="p-3">{renderCell(row, key)}</td>
+                              <td key={j} className="p-3">{row[key]?.toString()}</td>
                             ))}
                             {activeFeature === "Invoices & Quotations" && (
                               <td className="p-3">
@@ -2035,28 +2190,6 @@ const printInvoice = () => {
             }
           } catch (err) {
             console.error("Failed to refresh customers:", err);
-          }
-        }}
-      />
-
-      {/* Add Staff Modal */}
-      <AddStaffModal
-        isOpen={isAddStaffModalOpen}
-        onClose={() => setIsAddStaffModalOpen(false)}
-        onSuccess={async () => {
-          try {
-            const res = await fetch("/api/staff-management");
-            if (res.ok) {
-              const data = await res.json();
-              // If we're viewing Staff Management, refresh rows
-              if (activeFeature === "Staff Management") {
-                if (Array.isArray(data)) setDataRows(data || []);
-                else if (data && Array.isArray((data as any).data)) setDataRows((data as any).data || []);
-                else setDataRows([data]);
-              }
-            }
-          } catch (err) {
-            console.error("Failed to refresh staff data:", err);
           }
         }}
       />
