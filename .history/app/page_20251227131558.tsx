@@ -383,27 +383,16 @@ export default function HomePage() {
   const getKeysForFeature = (row: any) => {
     const keys = getOrderedKeys(row);
     if (activeFeature === "Suppliers") {
-      const copy = [...keys];
-      // Ensure phone column is placed right after name (if phone exists)
-      const nameIdx = copy.findIndex(k => k.toLowerCase() === "name");
-      const phoneIdx = copy.findIndex(k => k.toLowerCase() === "phone");
-      if (phoneIdx >= 0 && nameIdx >= 0) {
-        // remove existing phone position
-        copy.splice(phoneIdx, 1);
-        // insert after nameIdx (if phone was before name, nameIdx shifts by -1)
-        const insertAt = phoneIdx < nameIdx ? nameIdx : nameIdx + 1;
-        copy.splice(insertAt, 0, "phone");
-      }
-
+      const idx = keys.findIndex(k => k.toLowerCase() === "total_owed");
       // insert 'balance' immediately after total_owed
-      const idx = copy.findIndex(k => k.toLowerCase() === "total_owed");
       if (idx >= 0) {
+        const copy = [...keys];
         // avoid duplicate
         if (!copy.includes("balance")) {
           copy.splice(idx + 1, 0, "balance");
         }
+        return copy;
       }
-      return copy;
     }
     return keys;
   };
@@ -1224,9 +1213,6 @@ const printInvoice = () => {
                               {col.replaceAll("_", " ")}
                             </th>
                           ))}
-                          {activeFeature === "Suppliers" && !getKeysForFeature(filteredRows[0]).includes("balance") && (
-                            <th className="p-3 capitalize">Balance</th>
-                          )}
                           {activeFeature === "Invoices & Quotations" && (
                             <th className="p-3 capitalize">Actions</th>
                           )}
@@ -1234,11 +1220,7 @@ const printInvoice = () => {
                       </thead>
                       <tbody>
                         {filteredRows.map((row, i) => (
-                          <tr
-                            key={i}
-                            onClick={() => setSelectedSupplier(row)}
-                            className={`border-b hover:bg-gray-50 cursor-pointer ${selectedSupplier && selectedSupplier.id === row.id ? 'bg-blue-50' : ''}`}
-                          >
+                          <tr key={i} className="border-b hover:bg-gray-50">
                             {getKeysForFeature(row).map((key, j) => (
                               <td key={j} className="p-3">{renderCell(row, key)}</td>
                             ))}
@@ -1256,7 +1238,16 @@ const printInvoice = () => {
                                 </button>
                               </td>
                             )}
-                            
+                            {activeFeature === "Suppliers" && (
+                              <td className="p-3">
+                                {(() => {
+                                  const total = Number(row.total_owed || row.total || 0);
+                                  const paid = Number(row.paid || 0);
+                                  const balance = +(total - paid).toFixed(2);
+                                  return renderCell(row, "balance");
+                                })()}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -2164,24 +2155,9 @@ const printInvoice = () => {
             if (res.ok) {
               const data = await res.json();
               setDataRows(data || []);
-              setSelectedSupplier(null);
             }
           } catch (err) {
             console.error("Failed to refresh suppliers:", err);
-          }
-        }}
-        initialSupplier={supplierToEdit}
-        onSupplierUpdated={async () => {
-          try {
-            const res = await fetch("/api/suppliers");
-            if (res.ok) {
-              const data = await res.json();
-              setDataRows(data || []);
-              setSelectedSupplier(null);
-              setSupplierToEdit(null);
-            }
-          } catch (err) {
-            console.error("Failed to refresh suppliers after update:", err);
           }
         }}
       />

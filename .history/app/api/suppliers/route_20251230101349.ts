@@ -58,7 +58,7 @@ function normalizePhoneToKenya(raw?: string | null) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { refno, name, phone, total_owed = 0, paid = 0, status = 'unpaid' } = body || {};
+    const { refno, name, total_owed = 0, paid = 0, status = 'unpaid' } = body || {};
 
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -68,12 +68,9 @@ export async function POST(request: Request) {
     const p = Number(paid) || 0;
     const computedBalance = +(t - p);
 
-    const normalizedPhone = normalizePhoneToKenya(phone);
-
     const payload = {
       refno: refno || `SUP-${Date.now().toString().slice(-6)}`,
       name: String(name).trim(),
-      phone: normalizedPhone,
       total_owed: t,
       paid: p,
       balance: computedBalance,
@@ -130,12 +127,6 @@ export async function PATCH(request: Request) {
       payload.status = (finalPaid >= finalTotal) ? 'paid' : (finalPaid > 0 ? 'partial' : 'unpaid');
     } else if (status !== undefined) {
       payload.status = ['unpaid','partial','paid'].includes(String(status)) ? String(status) : 'unpaid';
-    }
-
-    // normalize phone if provided in patch
-    if (body && (body as any).phone !== undefined) {
-      const normalized = normalizePhoneToKenya((body as any).phone);
-      payload.phone = normalized;
     }
 
     const { data, error } = await supabase.from('suppliers').update(payload).eq('id', id).select();

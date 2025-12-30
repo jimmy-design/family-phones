@@ -25,40 +25,10 @@ export async function GET() {
   }
 }
 
-function normalizePhoneToKenya(raw?: string | null) {
-  if (!raw) return null;
-  // remove spaces and non-digit/plus characters
-  let s = String(raw).trim();
-  // keep plus to detect international prefix, but remove other non-digits
-  const hasPlus = s.startsWith('+');
-  s = s.replace(/[^0-9]/g, '');
-  if (!s) return null;
-  // if originally had plus, assume country code present
-  if (hasPlus) {
-    // ensure it starts with 254
-    if (s.startsWith('254')) return '+' + s;
-    // otherwise just prefix +
-    return '+' + s;
-  }
-  // If starts with 0, replace leading 0 with 254
-  if (s.startsWith('0')) {
-    s = '254' + s.slice(1);
-    return '+' + s;
-  }
-  // If already starts with 254, add plus
-  if (s.startsWith('254')) return '+' + s;
-  // If looks like local (9 digits) e.g., 712345678 -> prepend 254
-  if (s.length === 9) return '+254' + s;
-  // Fallback: if length 12 and missing plus, assume it's 254XXXXXXXXX
-  if (s.length === 12 && s.startsWith('254')) return '+' + s;
-  // Otherwise return with plus
-  return '+' + s;
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { refno, name, phone, total_owed = 0, paid = 0, status = 'unpaid' } = body || {};
+    const { refno, name, total_owed = 0, paid = 0, status = 'unpaid' } = body || {};
 
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -68,12 +38,9 @@ export async function POST(request: Request) {
     const p = Number(paid) || 0;
     const computedBalance = +(t - p);
 
-    const normalizedPhone = normalizePhoneToKenya(phone);
-
     const payload = {
       refno: refno || `SUP-${Date.now().toString().slice(-6)}`,
       name: String(name).trim(),
-      phone: normalizedPhone,
       total_owed: t,
       paid: p,
       balance: computedBalance,
@@ -130,12 +97,6 @@ export async function PATCH(request: Request) {
       payload.status = (finalPaid >= finalTotal) ? 'paid' : (finalPaid > 0 ? 'partial' : 'unpaid');
     } else if (status !== undefined) {
       payload.status = ['unpaid','partial','paid'].includes(String(status)) ? String(status) : 'unpaid';
-    }
-
-    // normalize phone if provided in patch
-    if (body && (body as any).phone !== undefined) {
-      const normalized = normalizePhoneToKenya((body as any).phone);
-      payload.phone = normalized;
     }
 
     const { data, error } = await supabase.from('suppliers').update(payload).eq('id', id).select();
