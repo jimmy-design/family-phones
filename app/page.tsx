@@ -1171,8 +1171,15 @@ const printInvoice = () => {
                           const total = Number(row.total_owed || row.total || 0);
                           const paid = Number(row.paid || 0);
                           const balance = +(total - paid).toFixed(2);
+                          const isSelected = !!(selectedSupplier && selectedSupplier.id === row.id);
                           return (
-                            <div key={i} className="py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg">
+                            <div
+                              key={i}
+                              onClick={() => setSelectedSupplier(row)}
+                              className={`py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg cursor-pointer ${
+                                isSelected ? 'ring-2 ring-blue-400 bg-blue-50' : ''
+                              }`}
+                            >
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="font-semibold truncate text-sm text-gray-800">{name}</div>
