@@ -920,7 +920,31 @@ const printInvoice = () => {
       <div className="relative flex flex-col md:flex-row h-full w-full px-4 md:px-6 pt-6 pb-24 gap-6 overflow-hidden">
         {/* RIGHT SIDE */}
         <div className="flex flex-col flex-1 overflow-hidden order-1 md:order-2">
-          <h2 className="text-2xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent mb-3">
+          {/* Mobile header with title and logout */}
+          <div className="flex items-center justify-between md:hidden mb-3">
+            <h2 className="text-xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">
+              {activeFeature || current.title}
+            </h2>
+            <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
+                } catch {}
+                if (typeof document !== "undefined") {
+                  document.cookie = "authToken=; path=/; max-age=0";
+                }
+                router.push("/login");
+              }}
+              className="ml-3 inline-flex items-center gap-1 rounded-full bg-red-500 px-3 py-1.5 text-xs font-semibold text-white shadow-md active:scale-95"
+            >
+              <FiLogOut className="text-sm" />
+              <span>Logout</span>
+            </button>
+          </div>
+
+          {/* Desktop title */}
+          <h2 className="hidden md:block text-2xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent mb-3">
             {activeFeature || current.title}
           </h2>
 
