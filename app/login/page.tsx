@@ -22,8 +22,8 @@ export default function LoginPage() {
 
       if (res.ok) {
         const data = await res.json();
-        // Set a simple auth token in a cookie (in a real app, use proper session management)
-        document.cookie = `authToken=authenticated; path=/; max-age=${60 * 60 * 24 * 7};`; // 7 days
+        // Session-only cookie: cleared when browser/app is closed
+        document.cookie = `authToken=authenticated; path=/; SameSite=Lax`;
         router.push("/");
         router.refresh();
       } else {
