@@ -7,8 +7,11 @@ import Image from "next/image";
 import BottomNav from "@/components/layout/BottomNav";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
-import { FiLogOut } from "react-icons/fi";
+import { FiLogOut, FiX } from "react-icons/fi";
 import PaymentModal from '@/components/PaymentModal';
+import AddCustomerModal from '@/components/AddCustomerModal';
+import AddStaffModal from '@/components/AddStaffModal';
+import AddSupplierModal from '@/components/AddSupplierModal';
 
 /* ----- Types ----- */
 interface InventoryItem {
@@ -65,6 +68,22 @@ export default function HomePage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
+  const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
+  const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState<any | null>(null);
+  const [supplierToEdit, setSupplierToEdit] = useState<any | null>(null);
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [inventoryForm, setInventoryForm] = useState({
+    imei: "",
+    model: "",
+    name: "",
+    price: "",
+    offer_price: "",
+    quantity: "",
+    status: "Available",
+    updated_by: "Admin",
+  });
 
   /* ----- Data ----- */
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -101,6 +120,8 @@ export default function HomePage() {
   const [invoiceDate, setInvoiceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [taxType, setTaxType] = useState<string>("none");
+  const [taxAmount, setTaxAmount] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   /* ----- Invoice Confirm Modal State ----- */
@@ -278,7 +299,12 @@ export default function HomePage() {
         const res = await fetch(endpoint);
         if (res.ok) {
           const data = await res.json();
-          setDataRows(data || []);
+          let rows: any[] = [];
+          if (Array.isArray(data)) rows = data;
+          else if (data && Array.isArray((data as any).data)) rows = (data as any).data;
+          else if (data && Array.isArray((data as any).rows)) rows = (data as any).rows;
+          else if (data && typeof data === "object") rows = [data];
+          setDataRows(rows);
         } else setDataRows([]);
       } catch (err) {
         console.error("Error fetching feature data:", err);
@@ -289,6 +315,58 @@ export default function HomePage() {
     fetchData();
   }, [activeFeature]);
 
+  const refreshInventoryRows = async () => {
+    try {
+      const res = await fetch("/api/inventory");
+      if (res.ok) {
+        const data = await res.json();
+        setDataRows(Array.isArray(data) ? data : []);
+        setInventory(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Failed to refresh inventory:", err);
+    }
+  };
+
+  const handleInventoryChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    setInventoryForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleInventorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(inventoryForm),
+      });
+      if (res.ok) {
+        setIsInventoryModalOpen(false);
+        setInventoryForm({
+          imei: "",
+          model: "",
+          name: "",
+          price: "",
+          offer_price: "",
+          quantity: "",
+          status: "Available",
+          updated_by: "Admin",
+        });
+        await refreshInventoryRows();
+      } else {
+        const t = await res.text();
+        console.error("Failed to add inventory:", t);
+        alert("Error saving item.");
+      }
+    } catch (err) {
+      console.error("Error saving item:", err);
+      alert("Error saving item.");
+    }
+  };
+
   const filteredRows = dataRows.filter((row) =>
     Object.values(row).some((val) =>
       val?.toString().toLowerCase().includes(search.toLowerCase())
@@ -297,9 +375,98 @@ export default function HomePage() {
 
   const getOrderedKeys = (row: any) => {
     let keys = Object.keys(row);
+    // Always exclude created/updated timestamp columns (various formats)
+    keys = keys.filter((k) => {
+      const n = k.toLowerCase().replace(/[_\s]/g, "");
+      return n !== "createdat" && n !== "updatedat";
+    });
+
+    // Additional exclusions for invoice/quotation views
     if (activeFeature?.toLowerCase().includes("invoice") || activeFeature?.toLowerCase().includes("quotation")) {
-      const excludedCols = ["created_by", "createdby", "created_at", "createdat", "updated_at", "updatedat", "invoice_date", "invoicedate", "due_date", "duedate", "currency", "id", "reference_number", "referencenumber", "customer_id", "customerid", "tax_amount", "discount_amount", "amount_paid", "payment_method", "notes"];
+      const excludedCols = [
+        "created_by",
+        "createdby",
+        "invoice_date",
+        "invoicedate",
+        "due_date",
+        "duedate",
+        "currency",
+        "id",
+        "reference_number",
+        "referencenumber",
+        "customer_id",
+        "customerid",
+        "tax_amount",
+        "discount_amount",
+        "amount_paid",
+        "payment_method",
+        "notes",
+      ];
       keys = keys.filter((k) => !excludedCols.includes(k.toLowerCase().replace(/_/g, "").replace(/ /g, "")));
+    }
+    return keys;
+  };
+
+  const renderCell = (row: any, key: string) => {
+    const val = row[key];
+    if (val === null || val === undefined) return "";
+    const keyNormalized = key.toLowerCase();
+    const formatCurrency = (n: number) => {
+      try {
+        return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 2 }).format(n);
+      } catch (e) {
+        return `KES ${n.toFixed(2)}`;
+      }
+    };
+
+    if (keyNormalized === "balance") {
+      const total = Number(row.total_owed || row.total || 0);
+      const paid = Number(row.paid || 0);
+      const balance = +(total - paid).toFixed(2);
+      const isOwed = balance > 0;
+      const isClear = balance === 0;
+      const cls = isOwed ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
+      return (
+        <span className={`inline-block px-2 py-0.5 rounded-full text-sm font-semibold ${cls}`}>
+          {formatCurrency(balance)}
+        </span>
+      );
+    }
+    if (keyNormalized.includes("status")) {
+      const isActive = String(val).toLowerCase() === "active";
+      return (
+        <span className={`inline-block px-2 py-0.5 rounded-full text-sm font-semibold ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+          {String(val)}
+        </span>
+      );
+    }
+    return String(val);
+  };
+
+  const getKeysForFeature = (row: any) => {
+    const keys = getOrderedKeys(row);
+    if (activeFeature === "Suppliers") {
+      const copy = [...keys];
+      // Ensure phone column is placed right after name (if phone exists)
+      const nameIdx = copy.findIndex(k => k.toLowerCase() === "name");
+      const phoneIdx = copy.findIndex(k => k.toLowerCase() === "phone");
+      if (phoneIdx >= 0 && nameIdx >= 0) {
+        // remove existing phone position
+        copy.splice(phoneIdx, 1);
+        // insert after nameIdx (if phone was before name, nameIdx shifts by -1)
+        const insertAt = phoneIdx < nameIdx ? nameIdx : nameIdx + 1;
+        copy.splice(insertAt, 0, "phone");
+      }
+
+      // insert 'balance' immediately after total_owed
+      const idx = copy.findIndex(k => k.toLowerCase() === "total_owed");
+      if (idx >= 0) {
+        // avoid duplicate
+        if (!copy.includes("balance")) {
+          copy.splice(idx + 1, 0, "balance");
+        }
+      }
+      return copy;
     }
     return keys;
   };
@@ -483,6 +650,18 @@ export default function HomePage() {
     return invoiceItems.reduce((sum, item) => sum + item.amount, 0);
   };
 
+  // Recalculate tax amount when tax type or invoice items change
+  useEffect(() => {
+    const subtotal = calculateInvoiceTotal();
+    let percent = 0;
+    if (taxType === "vat") percent = 0.16;
+    else if (taxType === "levy") percent = 0.015;
+    else if (taxType === "withholding") percent = 0.05;
+
+    const newTax = +(subtotal * percent).toFixed(2);
+    setTaxAmount(newTax);
+  }, [taxType, invoiceItems]);
+
   const handleGenerateInvoice = async () => {
     if (!invoiceCustomerId) {
       alert("Please select a customer");
@@ -510,7 +689,6 @@ export default function HomePage() {
     setIsSubmitting(true);
 
     const subtotal = calculateInvoiceTotal();
-    const taxAmount = 0;
     const discountAmount = 0;
     const totalAmount = subtotal + taxAmount - discountAmount;
 
@@ -572,6 +750,8 @@ export default function HomePage() {
       setInvoiceDate("");
       setDueDate("");
       setNotes("");
+      setTaxType("none");
+      setTaxAmount(0);
       setInvoiceType("invoice");
     } catch (err) {
       console.error(err);
@@ -787,6 +967,8 @@ const printInvoice = () => {
     setInvoiceDate("");
     setDueDate("");
     setNotes("");
+    setTaxType("none");
+    setTaxAmount(0);
     setInvoiceType("invoice");
   };
 
@@ -801,7 +983,31 @@ const printInvoice = () => {
       <div className="relative flex flex-col md:flex-row h-full w-full px-4 md:px-6 pt-6 pb-24 gap-6 overflow-hidden">
         {/* RIGHT SIDE */}
         <div className="flex flex-col flex-1 overflow-hidden order-1 md:order-2">
-          <h2 className="text-2xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent mb-3">
+          {/* Mobile header with title and logout */}
+          <div className="flex items-center justify-between md:hidden mb-3">
+            <h2 className="text-xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">
+              {activeFeature || current.title}
+            </h2>
+            <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
+                } catch {}
+                if (typeof document !== "undefined") {
+                  document.cookie = "authToken=; path=/; max-age=0";
+                }
+                router.push("/login");
+              }}
+              className="ml-3 inline-flex items-center gap-1 rounded-full bg-red-500 px-3 py-1.5 text-xs font-semibold text-white shadow-md active:scale-95"
+            >
+              <FiLogOut className="text-sm" />
+              <span>Logout</span>
+            </button>
+          </div>
+
+          {/* Desktop title */}
+          <h2 className="hidden md:block text-2xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent mb-3">
             {activeFeature || current.title}
           </h2>
 
@@ -872,6 +1078,55 @@ const printInvoice = () => {
                         Update
                       </button>
                     </>
+                  ) : activeFeature === "Customers" ? (
+                    <button
+                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
+                      onClick={() => setIsAddCustomerModalOpen(true)}
+                    >
+                      Add
+                    </button>
+                  ) : activeFeature === "Inventory" ? (
+                    <button
+                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
+                      onClick={() => setIsInventoryModalOpen(true)}
+                    >
+                      Add
+                    </button>
+                  ) : activeFeature === "Staff Management" ? (
+                    <button
+                      className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
+                      onClick={() => setIsAddStaffModalOpen(true)}
+                    >
+                      Add
+                    </button>
+                  ) : activeFeature === "Suppliers" ? (
+                    <>
+                      <button
+                        className="px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
+                        onClick={() => {
+                          // open add modal (clear any edit holder)
+                          try { if (typeof window !== 'undefined') (window as any).__supplierToEdit = null; } catch {}
+                          setSupplierToEdit(null);
+                          setIsAddSupplierModalOpen(true);
+                        }}
+                      >
+                        Add
+                      </button>
+                      <button
+                        className="px-3 py-2 text-xs md:text-sm bg-green-600 text-white rounded-lg font-semibold"
+                        onClick={() => {
+                          if (!selectedSupplier) {
+                            alert('Please select a supplier row to update');
+                            return;
+                          }
+                          try { if (typeof window !== 'undefined') (window as any).__supplierToEdit = selectedSupplier; } catch {}
+                          setSupplierToEdit(selectedSupplier);
+                          setIsAddSupplierModalOpen(true);
+                        }}
+                      >
+                        Update
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
@@ -925,12 +1180,7 @@ const printInvoice = () => {
                                 <span>{row.subtotal || 0}</span>
                               </div>
                               <div className="flex-shrink-0 ml-2">
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                                  row.payment_status === "Paid" ? "bg-green-100 text-green-700" :
-                                  row.payment_status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
-                                  row.payment_status === "Overdue" ? "bg-red-100 text-red-700" :
-                                  "bg-gray-100 text-gray-700"
-                                }`}>
+                                <span className="text-[9px] font-semibold text-gray-700">
                                   {row.payment_status || "Unpaid"}
                                 </span>
                               </div>
@@ -984,25 +1234,81 @@ const printInvoice = () => {
                           </div>
                         ))}
                       </div>
+                    ) : activeFeature === "Staff Management" ? (
+                      /* Mobile View - Card Layout for Staff Management (like invoices) */
+                      <div className="md:hidden px-0 py-2 space-y-3">
+                        {filteredRows.map((row, i) => {
+                          const fullName = row.first_name || row.full_name || `${row.firstName || ""} ${row.lastName || ""}`.trim() || "—";
+                          return (
+                            <div key={i} className="py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg">
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold truncate text-sm text-gray-800">{fullName}</div>
+                                  <div className="text-xs text-gray-500 truncate">{row.job_title || row.jobTitle || row.department || ""}</div>
+                                </div>
+                                <div className="flex-shrink-0 ml-3">{renderCell(row, "status")}</div>
+                              </div>
+
+                              <div className="flex justify-between items-center text-[12px] text-gray-600">
+                                <div className="flex-1 min-w-0 truncate">{row.email || row.phone || "—"}</div>
+                                <div className="flex-shrink-0 ml-3 text-sm font-semibold">{row.salary ?? ""}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : activeFeature === "Suppliers" ? (
+                      /* Mobile View - Card Layout for Suppliers */
+                      <div className="md:hidden px-0 py-2 space-y-3">
+                        {filteredRows.map((row, i) => {
+                          const name = row.name || row.refno || "—";
+                          const total = Number(row.total_owed || row.total || 0);
+                          const paid = Number(row.paid || 0);
+                          const balance = +(total - paid).toFixed(2);
+                          const isSelected = !!(selectedSupplier && selectedSupplier.id === row.id);
+                          return (
+                            <div
+                              key={i}
+                              onClick={() => setSelectedSupplier(row)}
+                              className={`py-3 px-3 bg-white shadow-md border-y border-gray-100 transition-all hover:shadow-lg cursor-pointer ${
+                                isSelected ? 'ring-2 ring-blue-400 bg-blue-50' : ''
+                              }`}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold truncate text-sm text-gray-800">{name}</div>
+                                  <div className="text-xs text-gray-500 truncate">{row.refno ? `Ref: ${row.refno}` : ''}</div>
+                                </div>
+                                <div className="flex-shrink-0 ml-3">{renderCell(row, "status")}</div>
+                              </div>
+
+                              <div className="flex justify-between items-center text-[12px] text-gray-600">
+                                <div className="flex-1 min-w-0 truncate">Total owed: <span className="font-semibold">{new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(total)}</span></div>
+                                <div className="flex-shrink-0 ml-3 text-sm font-semibold">Balance: <span className="ml-1">{renderCell(row, 'balance')}</span></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     ) : (
                       /* Mobile View - Default Table for other features */
                       <div className="md:hidden">
                         <table className="w-full text-sm text-left border-collapse">
                           <thead className="bg-gray-100 text-gray-700">
                             <tr>
-                              {getOrderedKeys(filteredRows[0]).map((col) => (
-                                <th key={col} className="p-3 capitalize">
-                                  {col.replaceAll("_", " ")}
-                                </th>
-                              ))}
+                              {getKeysForFeature(filteredRows[0]).map((col) => (
+                                    <th key={col} className="p-3 capitalize">
+                                      {col.replaceAll("_", " ")}
+                                    </th>
+                                  ))}
                             </tr>
                           </thead>
                           <tbody>
                             {filteredRows.map((row, i) => (
                               <tr key={i} className="border-b hover:bg-gray-50">
-                                {getOrderedKeys(row).map((key, j) => (
-                                  <td key={j} className="p-3">{row[key]?.toString()}</td>
-                                ))}
+                                {getKeysForFeature(row).map((key, j) => (
+                                    <td key={j} className="p-3">{renderCell(row, key)}</td>
+                                  ))}
                               </tr>
                             ))}
                           </tbody>
@@ -1014,19 +1320,44 @@ const printInvoice = () => {
                     <table className="hidden md:table w-full text-sm text-left border-collapse">
                       <thead className="bg-gray-100 text-gray-700">
                         <tr>
-                          {getOrderedKeys(filteredRows[0]).map((col) => (
+                          {getKeysForFeature(filteredRows[0]).map((col) => (
                             <th key={col} className="p-3 capitalize">
                               {col.replaceAll("_", " ")}
                             </th>
                           ))}
+                          {activeFeature === "Suppliers" && !getKeysForFeature(filteredRows[0]).includes("balance") && (
+                            <th className="p-3 capitalize">Balance</th>
+                          )}
+                          {activeFeature === "Invoices & Quotations" && (
+                            <th className="p-3 capitalize">Actions</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
                         {filteredRows.map((row, i) => (
-                          <tr key={i} className="border-b hover:bg-gray-50">
-                            {getOrderedKeys(row).map((key, j) => (
-                              <td key={j} className="p-3">{row[key]?.toString()}</td>
+                          <tr
+                            key={i}
+                            onClick={() => setSelectedSupplier(row)}
+                            className={`border-b hover:bg-gray-50 cursor-pointer ${selectedSupplier && selectedSupplier.id === row.id ? 'bg-blue-50' : ''}`}
+                          >
+                            {getKeysForFeature(row).map((key, j) => (
+                              <td key={j} className="p-3">{renderCell(row, key)}</td>
                             ))}
+                            {activeFeature === "Invoices & Quotations" && (
+                              <td className="p-3">
+                                <button
+                                  onClick={() => {
+                                    if (typeof window !== "undefined" && window.innerWidth >= 768) {
+                                      openInvoiceDetail(row);
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                >
+                                  View
+                                </button>
+                              </td>
+                            )}
+                            
                           </tr>
                         ))}
                       </tbody>
@@ -1376,6 +1707,172 @@ const printInvoice = () => {
         </div>
       )}
 
+      {/* Add Inventory Modal */}
+      {isInventoryModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center p-0 md:p-4">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsInventoryModalOpen(false)} />
+
+          {/* Sheet on mobile, centered modal on desktop */}
+          <div className="relative w-full md:max-w-lg bg-white rounded-t-2xl md:rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="sticky top-0 flex items-center justify-between px-4 md:px-6 py-3 border-b bg-white/95 backdrop-blur">
+              <div>
+                <h2 className="text-base md:text-lg font-bold text-gray-800">Add Inventory Item</h2>
+                <p className="hidden md:block text-xs text-gray-500">Capture device details to update your stock</p>
+              </div>
+              <button
+                onClick={() => setIsInventoryModalOpen(false)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                aria-label="Close"
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <form onSubmit={handleInventorySubmit} className="px-4 md:px-6 py-4 space-y-4">
+              {/* Device info */}
+              <div>
+                <div className="text-xs font-semibold text-gray-600 mb-2">Device Information</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600">IMEI</label>
+                    <input
+                      type="text"
+                      name="imei"
+                      placeholder="3569 42 10..."
+                      value={inventoryForm.imei}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600">Model</label>
+                    <input
+                      type="text"
+                      name="model"
+                      placeholder="Samsung A14"
+                      value={inventoryForm.model}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[11px] font-medium text-gray-600">Name</label>
+                    <input
+                      type="text"
+                      name="name"
+                      placeholder="Device name (optional)"
+                      value={inventoryForm.name}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing */}
+              <div>
+                <div className="text-xs font-semibold text-gray-600 mb-2">Pricing</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600">Price (KES)</label>
+                    <input
+                      type="number"
+                      name="price"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={inventoryForm.price}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600">Offer Price (KES)</label>
+                    <input
+                      type="number"
+                      name="offer_price"
+                      inputMode="decimal"
+                      placeholder="Optional"
+                      value={inventoryForm.offer_price}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600">Quantity</label>
+                    <input
+                      type="number"
+                      name="quantity"
+                      inputMode="numeric"
+                      placeholder="1"
+                      value={inventoryForm.quantity}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <div className="text-xs font-semibold text-gray-600 mb-2">Status</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-1">
+                    <label className="block text-[11px] font-medium text-gray-600">Item Status</label>
+                    <select
+                      name="status"
+                      value={inventoryForm.status}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm bg-white"
+                    >
+                      <option>Available</option>
+                      <option>Reserved</option>
+                      <option>Sold Out</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[11px] font-medium text-gray-600">Updated By</label>
+                    <input
+                      type="text"
+                      name="updated_by"
+                      placeholder="e.g. Admin"
+                      value={inventoryForm.updated_by}
+                      onChange={handleInventoryChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex flex-col md:flex-row gap-2 md:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsInventoryModalOpen(false)}
+                  className="w-full md:w-auto inline-flex justify-center items-center px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="w-full md:w-auto inline-flex justify-center items-center px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow"
+                >
+                  Save Item
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Invoice/Quotation Modal */}
       {isInvoiceModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-2 pb-28">
@@ -1535,8 +2032,21 @@ const printInvoice = () => {
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* Tax selection */}
               <div className="mt-2">
+                <label className="block text-[9px] font-semibold mb-0.5">Tax</label>
+                <select
+                  value={taxType}
+                  onChange={(e) => setTaxType(e.target.value)}
+                  className="w-full p-1 border rounded text-[10px] mb-2"
+                >
+                  <option value="none">None</option>
+                  <option value="vat">VAT (16%)</option>
+                  <option value="levy">Levy (1.5%)</option>
+                  <option value="withholding">Withholding Tax (5%)</option>
+                </select>
+
+                {/* Notes */}
                 <label className="block text-[9px] font-semibold mb-0.5">Notes</label>
                 <textarea
                   className="w-full p-1 border rounded text-[10px]"
@@ -1558,8 +2068,8 @@ const printInvoice = () => {
                     <span className="font-semibold">{calculateInvoiceTotal().toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center text-[9px]">
-                    <span className="text-gray-600">Tax (0%):</span>
-                    <span className="font-semibold">0.00</span>
+                    <span className="text-gray-600">Tax ({taxType === 'vat' ? '16%' : taxType === 'levy' ? '1.5%' : taxType === 'withholding' ? '5%' : '0%'}):</span>
+                    <span className="font-semibold">{taxAmount.toFixed(2)}</span>
                   </div>
                   <div className="pt-0.5 border-t border-blue-300">
                     <div className="flex justify-between items-center">
@@ -1630,12 +2140,7 @@ const printInvoice = () => {
                   </h2>
                   <p className="text-xs text-gray-600">#{selectedInvoiceDetail.invoice_number}</p>
                   <div className="mt-2">
-                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                      selectedInvoiceDetail.payment_status === "Paid" ? "bg-green-100 text-green-700" :
-                      selectedInvoiceDetail.payment_status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
-                      selectedInvoiceDetail.payment_status === "Overdue" ? "bg-red-100 text-red-700" :
-                      "bg-gray-100 text-gray-700"
-                    }`}>
+                    <span className="text-sm font-semibold text-gray-700">
                       {selectedInvoiceDetail.payment_status || "Unpaid"}
                     </span>
                   </div>
@@ -1890,6 +2395,82 @@ const printInvoice = () => {
             } catch (err) {
               console.error("Failed to refresh invoices:", err);
             }
+          }
+        }}
+      />
+
+      {/* Add Customer Modal */}
+      <AddCustomerModal
+        isOpen={isAddCustomerModalOpen}
+        onClose={() => setIsAddCustomerModalOpen(false)}
+        onCustomerAdded={async () => {
+          // Refresh customers data
+          try {
+            const res = await fetch("/api/customers");
+            if (res.ok) {
+              const data = await res.json();
+              setCustomers(data || []);
+              // Also refresh dataRows if we're on the Customers feature
+              if (activeFeature === "Customers") {
+                setDataRows(data || []);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to refresh customers:", err);
+          }
+        }}
+      />
+      
+      {/* Add Supplier Modal */}
+      <AddSupplierModal
+        isOpen={isAddSupplierModalOpen}
+        onClose={() => setIsAddSupplierModalOpen(false)}
+        onSupplierAdded={async () => {
+          try {
+            const res = await fetch("/api/suppliers");
+            if (res.ok) {
+              const data = await res.json();
+              setDataRows(data || []);
+              setSelectedSupplier(null);
+            }
+          } catch (err) {
+            console.error("Failed to refresh suppliers:", err);
+          }
+        }}
+        initialSupplier={supplierToEdit}
+        onSupplierUpdated={async () => {
+          try {
+            const res = await fetch("/api/suppliers");
+            if (res.ok) {
+              const data = await res.json();
+              setDataRows(data || []);
+              setSelectedSupplier(null);
+              setSupplierToEdit(null);
+            }
+          } catch (err) {
+            console.error("Failed to refresh suppliers after update:", err);
+          }
+        }}
+      />
+
+      {/* Add Staff Modal */}
+      <AddStaffModal
+        isOpen={isAddStaffModalOpen}
+        onClose={() => setIsAddStaffModalOpen(false)}
+        onSuccess={async () => {
+          try {
+            const res = await fetch("/api/staff-management");
+            if (res.ok) {
+              const data = await res.json();
+              // If we're viewing Staff Management, refresh rows
+              if (activeFeature === "Staff Management") {
+                if (Array.isArray(data)) setDataRows(data || []);
+                else if (data && Array.isArray((data as any).data)) setDataRows((data as any).data || []);
+                else setDataRows([data]);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to refresh staff data:", err);
           }
         }}
       />
