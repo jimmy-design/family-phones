@@ -312,7 +312,6 @@ export async function PUT(request: Request) {
     }
 
     // Update invoice in database
-    // Note: balance_due is a generated column (total_amount - amount_paid), so we don't update it
     const { error: invoiceError } = await supabase
       .from("invoices")
       .update({
@@ -324,6 +323,7 @@ export async function PUT(request: Request) {
         discount_amount: discount_amount !== undefined ? discount_amount : 0,
         total_amount: totalAmt,
         amount_paid: paidAmt,
+        balance_due: balanceDue,
         payment_status: finalPaymentStatus,
         payment_method: payment_method || null,
         currency: currency || "KES",

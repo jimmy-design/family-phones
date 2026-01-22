@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FiPlus, FiDownload, FiEdit, FiTrash2, FiDollarSign, FiEye, FiMessageSquare } from "react-icons/fi";
+import { FiPlus, FiDownload, FiEdit, FiTrash2, FiDollarSign, FiEye } from "react-icons/fi";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import PaymentModal from "@/components/PaymentModal";
@@ -80,7 +80,6 @@ export default function Invoices() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
-  const [isSendingReminders, setIsSendingReminders] = useState(false);
 
   // Fetch invoices, customers, and inventory items
   useEffect(() => {
@@ -451,70 +450,24 @@ export default function Invoices() {
     fetchInvoices();
   };
 
-  const handleSendReminders = async () => {
-    if (isSendingReminders) return;
-    
-    const partiallyPaidCount = invoices.filter(inv => inv.payment_status === "Partially Paid").length;
-    
-    if (partiallyPaidCount === 0) {
-      alert("No customers with partially paid invoices to remind.");
-      return;
-    }
-    
-    if (!window.confirm(`Send payment reminders to ${partiallyPaidCount} customer(s) with partially paid invoices?`)) {
-      return;
-    }
-    
-    setIsSendingReminders(true);
-    try {
-      const response = await fetch("/api/invoices/remind", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        alert(`Payment reminders sent!\n\nSent: ${data.sent}\nFailed: ${data.failed}\nTotal: ${data.total}`);
-      } else {
-        alert(`Failed to send reminders: ${data.error || "Unknown error"}`);
-      }
-    } catch (error) {
-      console.error("Error sending reminders:", error);
-      alert("Failed to send payment reminders. Please try again.");
-    } finally {
-      setIsSendingReminders(false);
-    }
-  };
-
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Invoices</h1>
         <div className="flex gap-2">
           <button
-            onClick={() => setShowModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
-          >
-            <FiPlus className="mr-2" />
-            Generate Invoice
-          </button>
-          <button
-            onClick={handleSendReminders}
-            disabled={isSendingReminders}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-2 rounded-lg flex items-center"
-          >
-            <FiMessageSquare className="mr-2" />
-            {isSendingReminders ? "Sending..." : "Remind"}
-          </button>
-          <button
             onClick={() => handleOpenPaymentModal()}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center"
           >
             <FiDollarSign className="mr-2" />
             Update Payment
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
+          >
+            <FiPlus className="mr-2" />
+            Generate Invoice
           </button>
         </div>
       </div>

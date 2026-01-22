@@ -8,7 +8,6 @@ import BottomNav from "@/components/layout/BottomNav";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { FiLogOut, FiX } from "react-icons/fi";
-import Swal from 'sweetalert2';
 import PaymentModal from '@/components/PaymentModal';
 import AddCustomerModal from '@/components/AddCustomerModal';
 import AddStaffModal from '@/components/AddStaffModal';
@@ -124,7 +123,6 @@ export default function HomePage() {
   const [taxType, setTaxType] = useState<string>("none");
   const [taxAmount, setTaxAmount] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSendingReminders, setIsSendingReminders] = useState(false);
   
   /* ----- Invoice Confirm Modal State ----- */
   const [invoiceConfirmOpen, setInvoiceConfirmOpen] = useState(false);
@@ -138,7 +136,6 @@ export default function HomePage() {
   /* ----- Invoice Edit State ----- */
   const [isEditingInvoice, setIsEditingInvoice] = useState(false);
   const [editingInvoiceData, setEditingInvoiceData] = useState<any>(null);
-  const [wasEditingInvoice, setWasEditingInvoice] = useState(false); // Track if last operation was an edit for success modal
 
   /* ----- Stats / content map ----- */
   const stats = {
@@ -640,94 +637,6 @@ export default function HomePage() {
     setInvoiceItems(invoiceItems.filter(item => item.id !== id));
   };
 
-  const handleSendReminders = async () => {
-    if (isSendingReminders) return;
-    
-    const partiallyPaidCount = dataRows.filter((row: any) => row.payment_status === "Partially Paid").length;
-    
-    if (partiallyPaidCount === 0) {
-      Swal.fire({
-        icon: 'info',
-        title: 'No Reminders to Send',
-        text: 'No customers with partially paid invoices found.',
-        confirmButtonColor: '#7c3aed'
-      });
-      return;
-    }
-    
-    const result = await Swal.fire({
-      icon: 'question',
-      title: 'Send Payment Reminders?',
-      html: `<p>You are about to send SMS reminders to <strong>${partiallyPaidCount}</strong> customer(s) with partially paid invoices.</p>`,
-      showCancelButton: true,
-      confirmButtonText: 'Send Reminders',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#7c3aed',
-      cancelButtonColor: '#6b7280'
-    });
-    
-    if (!result.isConfirmed) {
-      return;
-    }
-    
-    setIsSendingReminders(true);
-    
-    // Show loading state
-    Swal.fire({
-      title: 'Sending Reminders...',
-      html: 'Please wait while we send SMS reminders to customers.',
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      showConfirmButton: false,
-      didOpen: () => {
-        Swal.showLoading();
-      }
-    });
-    
-    try {
-      const response = await fetch("/api/invoices/remind", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Reminders Sent!',
-          html: `
-            <div class="text-left">
-              <p><strong>Sent:</strong> ${data.sent}</p>
-              <p><strong>Failed:</strong> ${data.failed}</p>
-              <p><strong>Total:</strong> ${data.total}</p>
-            </div>
-          `,
-          confirmButtonColor: '#7c3aed'
-        });
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Failed to Send',
-          text: data.error || 'Unknown error occurred',
-          confirmButtonColor: '#7c3aed'
-        });
-      }
-    } catch (error) {
-      console.error("Error sending reminders:", error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to send payment reminders. Please try again.',
-        confirmButtonColor: '#7c3aed'
-      });
-    } finally {
-      setIsSendingReminders(false);
-    }
-  };
-
   const handleInvoiceItemChange = (id: string, field: keyof InvoiceItem, value: any) => {
     setInvoiceItems(invoiceItems.map(item => {
       if (item.id === id) {
@@ -786,20 +695,6 @@ export default function HomePage() {
     const subtotal = calculateInvoiceTotal();
     const discountAmount = 0;
     const totalAmount = subtotal + taxAmount - discountAmount;
-    
-    // When editing, preserve the existing amount_paid and calculate balance
-    const existingAmountPaid = isEditingInvoice && editingInvoiceData ? (editingInvoiceData.amount_paid || 0) : 0;
-    const balanceDue = Math.max(0, totalAmount - existingAmountPaid);
-    
-    // Determine payment status based on amounts
-    let paymentStatus = "Unpaid";
-    if (existingAmountPaid <= 0) {
-      paymentStatus = "Unpaid";
-    } else if (existingAmountPaid >= totalAmount) {
-      paymentStatus = "Paid";
-    } else {
-      paymentStatus = "Partially Paid";
-    }
 
     const payload = {
       customer_id: invoiceCustomerId,
@@ -809,9 +704,9 @@ export default function HomePage() {
       tax_amount: taxAmount,
       discount_amount: discountAmount,
       total_amount: totalAmount,
-      amount_paid: existingAmountPaid,
-      payment_status: paymentStatus,
-      payment_method: isEditingInvoice && editingInvoiceData ? editingInvoiceData.payment_method : null,
+      amount_paid: 0,
+      payment_status: "Unpaid",
+      payment_method: null,
       currency: "KES",
       notes: notes || null,
       type: invoiceType,
@@ -820,32 +715,26 @@ export default function HomePage() {
         quantity: item.quantity,
         unit_price: item.rate,
         total_price: item.amount
-      })),
-      // Include editing-specific fields
-      ...(isEditingInvoice && editingInvoiceData ? {
-        id: editingInvoiceData.id,
-        invoice_number: editingInvoiceData.invoice_number,
-        existingItems: [] // All items are now in the invoiceItems array
-      } : {})
+      }))
     };
 
     try {
       const res = await fetch("/api/invoices", {
-        method: isEditingInvoice ? "PUT" : "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const text = await res.text();
-        console.error(`Failed to ${isEditingInvoice ? 'update' : 'create'} invoice:`, text);
-        alert(`Failed to ${isEditingInvoice ? 'update' : 'create'} invoice. See console for details.`);
+        console.error("Failed to create invoice:", text);
+        alert("Failed to create invoice. See console for details.");
         setIsSubmitting(false);
         return;
       }
 
-      const result = await res.json();
-      setCreatedInvoiceNumber(result.invoice_number);
+      const created = await res.json();
+      setCreatedInvoiceNumber(created.invoice_number);
       
       if (activeFeature?.toLowerCase().includes("invoice") || activeFeature?.toLowerCase().includes("quotation")) {
         const r2 = await fetch("/api/invoices");
@@ -855,12 +744,11 @@ export default function HomePage() {
         }
       }
 
-      // Show success modal - track if this was an edit before resetting
-      setWasEditingInvoice(isEditingInvoice);
+      // Show success modal
       setIsInvoiceModalOpen(false);
       setInvoiceSuccessOpen(true);
       
-      // Reset form and editing state
+      // Reset form
       setInvoiceCustomerId(0);
       setInvoiceItems([{ id: "1", description: "", quantity: 1, rate: 0, amount: 0 }]);
       setInvoiceDate("");
@@ -869,11 +757,9 @@ export default function HomePage() {
       setTaxType("none");
       setTaxAmount(0);
       setInvoiceType("invoice");
-      setIsEditingInvoice(false);
-      setEditingInvoiceData(null);
     } catch (err) {
       console.error(err);
-      alert(`Error ${isEditingInvoice ? 'updating' : 'creating'} invoice. Check console.`);
+      alert("Error creating invoice. Check console.");
     } finally {
       setIsSubmitting(false);
     }
@@ -899,44 +785,6 @@ export default function HomePage() {
   const closeInvoiceDetail = () => {
     setSelectedInvoiceDetail(null);
     setInvoiceDetailItems([]);
-  };
-
-  /* ----- Open Edit Invoice Modal ----- */
-  const openEditInvoice = async (invoice: any) => {
-    setEditingInvoiceData(invoice);
-    setIsEditingInvoice(true);
-    
-    // Pre-populate the invoice form with existing data
-    setInvoiceCustomerId(invoice.customer_id || 0);
-    setInvoiceDate(invoice.invoice_date || "");
-    setDueDate(invoice.due_date || "");
-    setNotes(invoice.notes || "");
-    setInvoiceType(invoice.invoice_number?.startsWith('QT') ? "quotation" : "invoice");
-    
-    // Fetch existing invoice items
-    try {
-      const res = await fetch(`/api/invoices/${invoice.invoice_number}/items`);
-      if (res.ok) {
-        const items = await res.json();
-        if (items && items.length > 0) {
-          setInvoiceItems(items.map((item: any, index: number) => ({
-            id: (index + 1).toString(),
-            description: item.description || "",
-            quantity: item.quantity || 1,
-            rate: item.unit_price || 0,
-            amount: item.total_price || 0
-          })));
-        } else {
-          setInvoiceItems([{ id: "1", description: "", quantity: 1, rate: 0, amount: 0 }]);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load invoice items for editing:", err);
-      setInvoiceItems([{ id: "1", description: "", quantity: 1, rate: 0, amount: 0 }]);
-    }
-    
-    // Open the invoice modal
-    setIsInvoiceModalOpen(true);
   };
 
   
@@ -1223,13 +1071,6 @@ const printInvoice = () => {
                         onClick={() => setIsInvoiceModalOpen(true)}
                       >
                         Generate
-                      </button>
-                      <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-purple-600 text-white rounded-lg font-semibold disabled:bg-purple-400"
-                        onClick={handleSendReminders}
-                        disabled={isSendingReminders}
-                      >
-                        {isSendingReminders ? "Sending..." : "Remind"}
                       </button>
                       <button
                         className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-green-600 text-white rounded-lg font-semibold"
@@ -2463,11 +2304,11 @@ const printInvoice = () => {
             </div>
             
             <h3 className="text-lg font-bold text-gray-800 mb-2">
-              {isEditingInvoice ? "Update" : "Confirm"} {invoiceType === "invoice" ? "Invoice" : "Quotation"}
+              Confirm {invoiceType === "invoice" ? "Invoice" : "Quotation"}
             </h3>
             
             <p className="text-sm text-gray-600 mb-4">
-              Are you sure you want to {isEditingInvoice ? "update" : "create"} this {invoiceType === "invoice" ? "invoice" : "quotation"}?
+              Are you sure you want to create this {invoiceType === "invoice" ? "invoice" : "quotation"}?
             </p>
             
             {/* Summary */}
@@ -2521,7 +2362,7 @@ const printInvoice = () => {
             </h3>
             
             <p className="text-sm text-gray-600 mb-2">
-              {invoiceType === "invoice" ? "Invoice" : "Quotation"} has been {wasEditingInvoice ? "updated" : "created"} successfully!
+              {invoiceType === "invoice" ? "Invoice" : "Quotation"} has been created successfully!
             </p>
             
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 mb-4 border border-blue-200">
@@ -2533,7 +2374,6 @@ const printInvoice = () => {
               onClick={() => {
                 setInvoiceSuccessOpen(false);
                 setCreatedInvoiceNumber("");
-                setWasEditingInvoice(false);
               }}
               className="w-full py-2.5 px-4 rounded-xl bg-green-600 text-white font-semibold text-sm hover:bg-green-700 transition-colors"
             >

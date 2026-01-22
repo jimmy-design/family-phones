@@ -8,7 +8,6 @@ import BottomNav from "@/components/layout/BottomNav";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { FiLogOut, FiX } from "react-icons/fi";
-import Swal from 'sweetalert2';
 import PaymentModal from '@/components/PaymentModal';
 import AddCustomerModal from '@/components/AddCustomerModal';
 import AddStaffModal from '@/components/AddStaffModal';
@@ -124,7 +123,6 @@ export default function HomePage() {
   const [taxType, setTaxType] = useState<string>("none");
   const [taxAmount, setTaxAmount] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSendingReminders, setIsSendingReminders] = useState(false);
   
   /* ----- Invoice Confirm Modal State ----- */
   const [invoiceConfirmOpen, setInvoiceConfirmOpen] = useState(false);
@@ -640,94 +638,6 @@ export default function HomePage() {
     setInvoiceItems(invoiceItems.filter(item => item.id !== id));
   };
 
-  const handleSendReminders = async () => {
-    if (isSendingReminders) return;
-    
-    const partiallyPaidCount = dataRows.filter((row: any) => row.payment_status === "Partially Paid").length;
-    
-    if (partiallyPaidCount === 0) {
-      Swal.fire({
-        icon: 'info',
-        title: 'No Reminders to Send',
-        text: 'No customers with partially paid invoices found.',
-        confirmButtonColor: '#7c3aed'
-      });
-      return;
-    }
-    
-    const result = await Swal.fire({
-      icon: 'question',
-      title: 'Send Payment Reminders?',
-      html: `<p>You are about to send SMS reminders to <strong>${partiallyPaidCount}</strong> customer(s) with partially paid invoices.</p>`,
-      showCancelButton: true,
-      confirmButtonText: 'Send Reminders',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#7c3aed',
-      cancelButtonColor: '#6b7280'
-    });
-    
-    if (!result.isConfirmed) {
-      return;
-    }
-    
-    setIsSendingReminders(true);
-    
-    // Show loading state
-    Swal.fire({
-      title: 'Sending Reminders...',
-      html: 'Please wait while we send SMS reminders to customers.',
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      showConfirmButton: false,
-      didOpen: () => {
-        Swal.showLoading();
-      }
-    });
-    
-    try {
-      const response = await fetch("/api/invoices/remind", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Reminders Sent!',
-          html: `
-            <div class="text-left">
-              <p><strong>Sent:</strong> ${data.sent}</p>
-              <p><strong>Failed:</strong> ${data.failed}</p>
-              <p><strong>Total:</strong> ${data.total}</p>
-            </div>
-          `,
-          confirmButtonColor: '#7c3aed'
-        });
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Failed to Send',
-          text: data.error || 'Unknown error occurred',
-          confirmButtonColor: '#7c3aed'
-        });
-      }
-    } catch (error) {
-      console.error("Error sending reminders:", error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to send payment reminders. Please try again.',
-        confirmButtonColor: '#7c3aed'
-      });
-    } finally {
-      setIsSendingReminders(false);
-    }
-  };
-
   const handleInvoiceItemChange = (id: string, field: keyof InvoiceItem, value: any) => {
     setInvoiceItems(invoiceItems.map(item => {
       if (item.id === id) {
@@ -1223,13 +1133,6 @@ const printInvoice = () => {
                         onClick={() => setIsInvoiceModalOpen(true)}
                       >
                         Generate
-                      </button>
-                      <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-purple-600 text-white rounded-lg font-semibold disabled:bg-purple-400"
-                        onClick={handleSendReminders}
-                        disabled={isSendingReminders}
-                      >
-                        {isSendingReminders ? "Sending..." : "Remind"}
                       </button>
                       <button
                         className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-green-600 text-white rounded-lg font-semibold"
@@ -2533,7 +2436,6 @@ const printInvoice = () => {
               onClick={() => {
                 setInvoiceSuccessOpen(false);
                 setCreatedInvoiceNumber("");
-                setWasEditingInvoice(false);
               }}
               className="w-full py-2.5 px-4 rounded-xl bg-green-600 text-white font-semibold text-sm hover:bg-green-700 transition-colors"
             >

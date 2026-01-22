@@ -299,20 +299,8 @@ export async function PUT(request: Request) {
     // Calculate amounts
     const totalAmt = total_amount !== undefined ? Number(total_amount) : 0;
     const paidAmt = amount_paid !== undefined ? Number(amount_paid) : 0;
-    const balanceDue = Math.max(0, totalAmt - paidAmt);
-    
-    // Determine payment status based on amounts
-    let finalPaymentStatus = payment_status || "Unpaid";
-    if (paidAmt <= 0) {
-      finalPaymentStatus = "Unpaid";
-    } else if (paidAmt >= totalAmt) {
-      finalPaymentStatus = "Paid";
-    } else {
-      finalPaymentStatus = "Partially Paid";
-    }
 
     // Update invoice in database
-    // Note: balance_due is a generated column (total_amount - amount_paid), so we don't update it
     const { error: invoiceError } = await supabase
       .from("invoices")
       .update({
@@ -324,11 +312,10 @@ export async function PUT(request: Request) {
         discount_amount: discount_amount !== undefined ? discount_amount : 0,
         total_amount: totalAmt,
         amount_paid: paidAmt,
-        payment_status: finalPaymentStatus,
+        payment_status: payment_status || "Unpaid",
         payment_method: payment_method || null,
         currency: currency || "KES",
-        notes: notes || null,
-        updated_at: new Date().toISOString()
+        notes: notes || null
       })
       .eq("id", id);
 

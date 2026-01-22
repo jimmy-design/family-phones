@@ -165,40 +165,7 @@ async function handlePayment(req: Request) {
       console.warn("Skipping payment log: ", (e as Error).message);
     }
 
-    // 4) Send SMS notification to customer
-    if (invoice.customer_id) {
-      try {
-        // Fetch customer phone number and name
-        const { data: customer, error: customerFetchError } = await supabase
-          .from("customers")
-          .select("phone_number, full_name")
-          .eq("customer_id", invoice.customer_id)
-          .limit(1)
-          .single();
-
-        if (customerFetchError) {
-          console.error("Error fetching customer for SMS:", customerFetchError);
-        } else if (customer?.phone_number) {
-          const phone = normalizePhoneToKenya(customer.phone_number);
-          if (phone) {
-            const customerName = customer.full_name || "Customer";
-            const currencyCode = invoice.currency || "KES";
-            
-            const message = `Dear ${customerName}, We have received your payment of ${currencyCode} ${paymentAmount.toFixed(2)} for Invoice ${invoice_number}. Total Paid: ${currencyCode} ${clampedPaid.toFixed(2)}. Balance Due: ${currencyCode} ${balanceDue.toFixed(2)}. Thank you for your payment.`;
-            
-            const smsSent = await sendSmsNotification(phone, message);
-            if (smsSent) {
-              console.log(`SMS sent successfully to ${phone} for payment on invoice ${invoice_number}`);
-            }
-          }
-        }
-      } catch (smsErr) {
-        console.error("Error sending payment SMS notification:", smsErr);
-        // Don't fail the payment if SMS fails
-      }
-    }
-
-    // 5) Return updated invoice snapshot
+    // 4) Return updated invoice snapshot
     const updated = {
       invoice_number: invoice_number,
       total_amount: total,

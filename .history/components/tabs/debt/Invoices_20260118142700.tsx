@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FiPlus, FiDownload, FiEdit, FiTrash2, FiDollarSign, FiEye, FiMessageSquare } from "react-icons/fi";
+import { FiPlus, FiDownload, FiEdit, FiTrash2, FiDollarSign, FiEye } from "react-icons/fi";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import PaymentModal from "@/components/PaymentModal";
@@ -80,7 +80,6 @@ export default function Invoices() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
-  const [isSendingReminders, setIsSendingReminders] = useState(false);
 
   // Fetch invoices, customers, and inventory items
   useEffect(() => {
@@ -153,25 +152,11 @@ export default function Invoices() {
     const taxAmount = formData.tax_amount;
     const discountAmount = formData.discount_amount;
     const totalAmount = subtotal + taxAmount - discountAmount;
-    
-    // Calculate balance due
-    const balanceDue = Math.max(0, totalAmount - formData.amount_paid);
-    
-    // Determine payment status based on amounts
-    let paymentStatus = formData.payment_status;
-    if (formData.amount_paid <= 0) {
-      paymentStatus = "Unpaid";
-    } else if (formData.amount_paid >= totalAmount) {
-      paymentStatus = "Paid";
-    } else {
-      paymentStatus = "Partially Paid";
-    }
 
     setFormData({
       ...formData,
       subtotal,
-      total_amount: totalAmount,
-      payment_status: paymentStatus
+      total_amount: totalAmount
     });
   };
 
@@ -354,25 +339,12 @@ export default function Invoices() {
     }));
   };
 
-  // Generate PDF with items fetched from database
-  const generatePDF = async (invoice: Invoice) => {
-    // Fetch invoice items from database
-    let invoiceItems: InvoiceItem[] = [];
-    try {
-      const response = await fetch(`/api/invoices/${invoice.invoice_number}/items`);
-      if (response.ok) {
-        invoiceItems = await response.json();
-      }
-    } catch (error) {
-      console.error("Error fetching invoice items for PDF:", error);
-    }
-
+  const generatePDF = (invoice: Invoice) => {
     const doc = new jsPDF() as any;
     
     // Add title
-    const isQuotation = invoice.invoice_number.startsWith("QT");
     doc.setFontSize(20);
-    doc.text(isQuotation ? "QUOTATION" : "INVOICE", 105, 20, { align: "center" });
+    doc.text("INVOICE", 105, 20, { align: "center" });
     
     // Add company info
     doc.setFontSize(12);
@@ -381,60 +353,44 @@ export default function Invoices() {
     doc.text("info@familyphones.co.ke", 20, 44);
     
     // Add invoice info
-    doc.text(`${isQuotation ? "Quotation" : "Invoice"} Number: ${invoice.invoice_number}`, 140, 30);
-    doc.text(`Date: ${invoice.invoice_date}`, 140, 37);
-    doc.text(`Due Date: ${invoice.due_date || "N/A"}`, 140, 44);
+    doc.text(`Invoice Number: ${invoice.invoice_number}`, 150, 30);
+    doc.text(`Date: ${invoice.invoice_date}`, 150, 37);
+    doc.text(`Due Date: ${invoice.due_date || "N/A"}`, 150, 44);
     
     // Add customer info
     const customer = customers.find(c => c.customer_id === invoice.customer_id);
     if (customer) {
       doc.text("Bill To:", 20, 60);
       doc.text(customer.full_name, 20, 67);
-      doc.text(customer.phone_number || "", 20, 74);
+      doc.text(customer.phone_number, 20, 74);
     }
     
-    // Add items table with items from database
+    // Add items table
     (doc as any).autoTable({
       startY: 85,
-      head: [['Item', 'Unit Price', 'Quantity', 'Total']],
-      body: invoiceItems.map(item => [
-        item.description,
-        `${invoice.currency} ${item.unit_price.toFixed(2)}`,
+      head: [['Item', 'Price', 'Quantity', 'Total']],
+      body: selectedItems.map(item => [
+        item.item.name,
+        item.item.price.toFixed(2),
         item.quantity,
-        `${invoice.currency} ${item.total_price.toFixed(2)}`
+        (item.item.price * item.quantity).toFixed(2)
       ]),
     });
     
     // Add totals
-    const finalY = (doc as any).lastAutoTable?.finalY || 100;
-    doc.text(`Subtotal: ${invoice.currency} ${invoice.subtotal.toFixed(2)}`, 140, finalY + 10);
-    doc.text(`Tax: ${invoice.currency} ${invoice.tax_amount.toFixed(2)}`, 140, finalY + 17);
-    doc.text(`Discount: ${invoice.currency} ${invoice.discount_amount.toFixed(2)}`, 140, finalY + 24);
-    doc.setFontSize(14);
-    doc.text(`Total: ${invoice.currency} ${invoice.total_amount.toFixed(2)}`, 140, finalY + 33);
-    doc.setFontSize(12);
-    doc.text(`Amount Paid: ${invoice.currency} ${invoice.amount_paid.toFixed(2)}`, 140, finalY + 42);
-    doc.text(`Balance Due: ${invoice.currency} ${(invoice.balance_due || 0).toFixed(2)}`, 140, finalY + 49);
+    const finalY = (doc as any).lastAutoTable.finalY;
+    doc.text(`Subtotal: ${invoice.currency} ${invoice.subtotal.toFixed(2)}`, 150, finalY + 10);
+    doc.text(`Tax: ${invoice.currency} ${invoice.tax_amount.toFixed(2)}`, 150, finalY + 17);
+    doc.text(`Discount: ${invoice.currency} ${invoice.discount_amount.toFixed(2)}`, 150, finalY + 24);
+    doc.text(`Total: ${invoice.currency} ${invoice.total_amount.toFixed(2)}`, 150, finalY + 31);
+    doc.text(`Amount Paid: ${invoice.currency} ${invoice.amount_paid.toFixed(2)}`, 150, finalY + 38);
+    doc.text(`Balance Due: ${invoice.currency} ${invoice.balance_due.toFixed(2)}`, 150, finalY + 45);
     
     // Add payment status
-    doc.text(`Payment Status: ${invoice.payment_status || "Unpaid"}`, 20, finalY + 20);
-    
-    // Add notes if any
-    if (invoice.notes) {
-      doc.text("Notes:", 20, finalY + 60);
-      doc.setFontSize(10);
-      doc.text(invoice.notes, 20, finalY + 67, { maxWidth: 170 });
-    }
+    doc.text(`Payment Status: ${invoice.payment_status}`, 20, finalY + 20);
     
     // Save the PDF
-    doc.save(`${isQuotation ? "quotation" : "invoice"}-${invoice.invoice_number}.pdf`);
-  };
-
-  // Handle View button click - generates PDF
-  const handleView = async (invoice: Invoice) => {
-    if (typeof window !== "undefined") {
-      await generatePDF(invoice);
-    }
+    doc.save(`invoice-${invoice.invoice_number}.pdf`);
   };
 
   const handleOpenPaymentModal = (invoice?: Invoice) => {
@@ -451,70 +407,24 @@ export default function Invoices() {
     fetchInvoices();
   };
 
-  const handleSendReminders = async () => {
-    if (isSendingReminders) return;
-    
-    const partiallyPaidCount = invoices.filter(inv => inv.payment_status === "Partially Paid").length;
-    
-    if (partiallyPaidCount === 0) {
-      alert("No customers with partially paid invoices to remind.");
-      return;
-    }
-    
-    if (!window.confirm(`Send payment reminders to ${partiallyPaidCount} customer(s) with partially paid invoices?`)) {
-      return;
-    }
-    
-    setIsSendingReminders(true);
-    try {
-      const response = await fetch("/api/invoices/remind", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        alert(`Payment reminders sent!\n\nSent: ${data.sent}\nFailed: ${data.failed}\nTotal: ${data.total}`);
-      } else {
-        alert(`Failed to send reminders: ${data.error || "Unknown error"}`);
-      }
-    } catch (error) {
-      console.error("Error sending reminders:", error);
-      alert("Failed to send payment reminders. Please try again.");
-    } finally {
-      setIsSendingReminders(false);
-    }
-  };
-
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Invoices</h1>
         <div className="flex gap-2">
           <button
-            onClick={() => setShowModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
-          >
-            <FiPlus className="mr-2" />
-            Generate Invoice
-          </button>
-          <button
-            onClick={handleSendReminders}
-            disabled={isSendingReminders}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-2 rounded-lg flex items-center"
-          >
-            <FiMessageSquare className="mr-2" />
-            {isSendingReminders ? "Sending..." : "Remind"}
-          </button>
-          <button
             onClick={() => handleOpenPaymentModal()}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center"
           >
             <FiDollarSign className="mr-2" />
             Update Payment
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
+          >
+            <FiPlus className="mr-2" />
+            Generate Invoice
           </button>
         </div>
       </div>
@@ -552,29 +462,24 @@ export default function Invoices() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <button
-                      onClick={() => handleView(invoice)}
-                      title="View/Download PDF"
-                      className="text-green-600 hover:text-green-900 mr-3"
-                    >
-                      <FiEye />
-                    </button>
-                    <button
-                      onClick={() => handleEdit(invoice)}
-                      title="Edit Invoice"
-                      className="text-indigo-600 hover:text-indigo-900 mr-3"
-                    >
-                      <FiEdit />
-                    </button>
-                    <button
-                      onClick={() => handleView(invoice)}
-                      title="Download PDF"
+                      onClick={() => {
+                        if (typeof window !== "undefined" && window.innerWidth >= 768) {
+                          generatePDF(invoice);
+                        }
+                      }}
+                      title="Open PDF (desktop only)"
                       className="text-blue-600 hover:text-blue-900 mr-3"
                     >
                       <FiDownload />
                     </button>
-                    <button
+                    <button 
+                      onClick={() => handleEdit(invoice)}
+                      className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    >
+                      <FiEdit />
+                    </button>
+                    <button 
                       onClick={() => handleDelete(invoice.id)}
-                      title="Delete Invoice"
                       className="text-red-600 hover:text-red-900"
                     >
                       <FiTrash2 />
@@ -827,62 +732,6 @@ export default function Invoices() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
-                  )}
-                  
-                  {/* Existing Invoice Items (shown when editing) */}
-                  {isEditing && (
-                    <div className="border rounded-lg p-4 mt-4">
-                      <h4 className="font-medium text-gray-800 mb-3">Existing Invoice Items</h4>
-                      {isLoadingItems ? (
-                        <p className="text-gray-500">Loading items...</p>
-                      ) : existingInvoiceItems.length > 0 ? (
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2">Item</th>
-                              <th className="text-left py-2">Price</th>
-                              <th className="text-left py-2">Quantity</th>
-                              <th className="text-left py-2">Total</th>
-                              <th className="text-left py-2">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {existingInvoiceItems.map((item) => (
-                              <tr key={item.id} className="border-b">
-                                <td className="py-2">{item.description}</td>
-                                <td className="py-2">KES {item.unit_price.toFixed(2)}</td>
-                                <td className="py-2">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={item.quantity}
-                                    onChange={(e) => {
-                                      const newQuantity = parseInt(e.target.value) || 1;
-                                      handleUpdateExistingItemQuantity(item.id!, newQuantity);
-                                    }}
-                                    className="w-16 px-2 py-1 border rounded"
-                                  />
-                                </td>
-                                <td className="py-2">
-                                  KES {item.total_price.toFixed(2)}
-                                </td>
-                                <td className="py-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveExistingItem(item.id!)}
-                                    className="text-red-600 hover:text-red-800"
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <p className="text-gray-500">No existing items found for this invoice.</p>
-                      )}
                     </div>
                   )}
                 </div>
