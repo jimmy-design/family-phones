@@ -33,35 +33,24 @@ function normalizePhoneToKenya(raw?: string | null) {
 // Send SMS notification via Africa's Talking
 async function sendSmsNotification(phone: string, message: string) {
   try {
-    const smsApiUrl = process.env.SMS_API_URL || 'https://api.africastalking.com/version1/messaging';
-    const senderId = process.env.SMS_SENDER_ID || '';
+    const smsApiUrl = process.env.SMS_API_URL || 'https://api.africastalking.com/version1/messaging/bulk';
+    const senderId = process.env.SMS_SENDER_ID || 'FamilySmart';
     const apiKey = process.env.SMS_API_KEY || '';
     const username = process.env.SMS_USERNAME || 'FamilySmart';
-
-    // Build form data - Africa's Talking expects application/x-www-form-urlencoded
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('to', phone); // Single phone number as string
-    formData.append('message', message);
-    
-    // Only add sender ID if it's not empty (some accounts may not have approved sender IDs)
-    if (senderId && senderId.trim() !== '') {
-      formData.append('from', senderId);
-    }
-
-    console.log('Sending SMS to:', phone);
-    console.log('SMS API URL:', smsApiUrl);
-    console.log('Username:', username);
-    console.log('Sender ID:', senderId || '(default)');
 
     const smsRes = await fetch(smsApiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
         'apiKey': apiKey,
         'Accept': 'application/json',
       },
-      body: formData.toString(),
+      body: JSON.stringify({
+        username: username,
+        phoneNumbers: [phone],
+        message: message,
+        from: senderId,
+      }),
     });
 
     if (!smsRes.ok) {
@@ -71,22 +60,8 @@ async function sendSmsNotification(phone: string, message: string) {
     }
     
     const result = await smsRes.json().catch(() => null);
-    console.log('Africa\'s Talking SMS response:', JSON.stringify(result, null, 2));
-    
-    // Check if any messages were actually sent
-    if (result?.SMSMessageData?.Recipients) {
-      const recipients = result.SMSMessageData.Recipients;
-      for (const recipient of recipients) {
-        console.log(`SMS to ${recipient.number}: status=${recipient.status}, statusCode=${recipient.statusCode}, cost=${recipient.cost}`);
-        if (recipient.status === 'Success') {
-          return true;
-        }
-      }
-    }
-    
-    // If we got here, no messages were successfully sent
-    console.error('SMS delivery failed - check Africa\'s Talking account balance and sender ID approval');
-    return false;
+    console.log('Africa\'s Talking SMS response:', result);
+    return true;
   } catch (smsErr) {
     console.error('Error sending SMS:', smsErr);
     return false;

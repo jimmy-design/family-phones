@@ -65,8 +65,8 @@ export async function POST(request: Request) {
       const phoneRaw = existing?.phone || null;
       const phone = normalizePhoneToKenya(phoneRaw);
       if (phone) {
-        const smsApiUrl = process.env.SMS_API_URL || 'https://api.africastalking.com/version1/messaging';
-        const senderId = process.env.SMS_SENDER_ID || '';
+        const smsApiUrl = process.env.SMS_API_URL || 'https://api.africastalking.com/version1/messaging/bulk';
+        const senderId = process.env.SMS_SENDER_ID || 'FamilySmart';
         const apiKey = process.env.SMS_API_KEY || '';
         const username = process.env.SMS_USERNAME || 'FamilySmart';
 
@@ -74,30 +74,19 @@ export async function POST(request: Request) {
         const supplierRef = existing?.refno || '';
         const message = `Dear ${supplierName || supplierRef || 'Supplier'}, We have successfully paid  KES ${amt.toFixed(2)}. Ref: ${supplierRef || '—'}. Remaining: KES ${newBalance.toFixed(2)}.`;
 
-        // Build form data - Africa's Talking expects application/x-www-form-urlencoded
-        const formData = new URLSearchParams();
-        formData.append('username', username);
-        formData.append('to', phone); // Single phone number as string
-        formData.append('message', message);
-        
-        // Only add sender ID if it's not empty
-        if (senderId && senderId.trim() !== '') {
-          formData.append('from', senderId);
-        }
-
-        console.log('Sending SMS to:', phone);
-        console.log('SMS API URL:', smsApiUrl);
-        console.log('Username:', username);
-        console.log('Sender ID:', senderId || '(default)');
-
         const smsRes = await fetch(smsApiUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
             'apiKey': apiKey,
             'Accept': 'application/json',
           },
-          body: formData.toString(),
+          body: JSON.stringify({
+            username: username,
+            to: phone,
+            message: message,
+            from: senderId,
+          }),
         });
 
         if (!smsRes.ok) {
@@ -105,14 +94,7 @@ export async function POST(request: Request) {
           console.error('SMS send failed', smsRes.status, txt);
         } else {
           const result = await smsRes.json().catch(() => null);
-          console.log('Africa\'s Talking SMS response:', JSON.stringify(result, null, 2));
-          
-          // Log recipient status for debugging
-          if (result?.SMSMessageData?.Recipients) {
-            for (const recipient of result.SMSMessageData.Recipients) {
-              console.log(`SMS to ${recipient.number}: status=${recipient.status}, statusCode=${recipient.statusCode}, cost=${recipient.cost}`);
-            }
-          }
+          console.log('Africa\'s Talking SMS response:', result);
         }
       }
     } catch (smsErr) {

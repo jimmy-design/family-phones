@@ -65,8 +65,8 @@ export async function POST(request: Request) {
       const phoneRaw = existing?.phone || null;
       const phone = normalizePhoneToKenya(phoneRaw);
       if (phone) {
-        const smsApiUrl = process.env.SMS_API_URL || 'https://api.africastalking.com/version1/messaging';
-        const senderId = process.env.SMS_SENDER_ID || '';
+        const smsApiUrl = process.env.SMS_API_URL || 'https://api.africastalking.com/version1/messaging/bulk';
+        const senderId = process.env.SMS_SENDER_ID || 'FamilySmart';
         const apiKey = process.env.SMS_API_KEY || '';
         const username = process.env.SMS_USERNAME || 'FamilySmart';
 
@@ -74,30 +74,26 @@ export async function POST(request: Request) {
         const supplierRef = existing?.refno || '';
         const message = `Dear ${supplierName || supplierRef || 'Supplier'}, We have successfully paid  KES ${amt.toFixed(2)}. Ref: ${supplierRef || '—'}. Remaining: KES ${newBalance.toFixed(2)}.`;
 
-        // Build form data - Africa's Talking expects application/x-www-form-urlencoded
-        const formData = new URLSearchParams();
-        formData.append('username', username);
-        formData.append('to', phone); // Single phone number as string
-        formData.append('message', message);
+        // Build request body - only include 'from' if sender ID is configured
+        const requestBody: Record<string, unknown> = {
+          username: username,
+          phoneNumbers: [phone],
+          message: message,
+        };
         
         // Only add sender ID if it's not empty
         if (senderId && senderId.trim() !== '') {
-          formData.append('from', senderId);
+          requestBody.from = senderId;
         }
-
-        console.log('Sending SMS to:', phone);
-        console.log('SMS API URL:', smsApiUrl);
-        console.log('Username:', username);
-        console.log('Sender ID:', senderId || '(default)');
 
         const smsRes = await fetch(smsApiUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
             'apiKey': apiKey,
             'Accept': 'application/json',
           },
-          body: formData.toString(),
+          body: JSON.stringify(requestBody),
         });
 
         if (!smsRes.ok) {
