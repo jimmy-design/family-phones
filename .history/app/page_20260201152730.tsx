@@ -1157,20 +1157,14 @@ const printInvoice = () => {
                   <h3 className="text-lg font-semibold">Statistics Overview</h3>
                   <div className="text-xs bg-white/20 px-2 py-1 rounded-full">Today</div>
                 </div>
-                {/* Render all statistics cards returned from the API (prefer totalAmountPaid for Total Amount Paid) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => {
-                    const isTotalPaid = stat.label === 'Total Amount Paid';
-                    const displayValue = isTotalPaid && totalAmountPaid !== null ? totalAmountPaid : stat.value;
-                    return (
-                      <div key={idx} className="p-4 bg-white/10 rounded-2xl text-center">
-                        <div className="text-xl md:text-2xl font-bold">
-                          {typeof displayValue === 'number' ? `KES ${displayValue.toLocaleString('en-KE')}` : displayValue}
-                        </div>
-                        <div className="text-xs opacity-90 mt-1">{stat.label}</div>
-                      </div>
-                    );
-                  })}
+                {/* Consolidated view: show only Total Amount Paid */}
+                <div className="flex items-center justify-center">
+                  <div className="p-6 bg-white/10 rounded-2xl text-center">
+                    <div className="text-3xl md:text-4xl font-extrabold">
+                      KES { (totalAmountPaid ?? (statistics.find(s=>s.label==='Total Amount Paid')?.value ?? 0)).toLocaleString('en-KE') }
+                    </div>
+                    <div className="text-sm opacity-90 mt-1">Total Amount Paid</div>
+                  </div>
                 </div>
               </motion.div>
 

@@ -26,6 +26,7 @@ interface InventoryItem {
   status?: string;
   quantity?: number;
 }
+
 interface Customer {
   customer_id: number;
   full_name: string;
@@ -141,8 +142,6 @@ export default function HomePage() {
   const [wasEditingInvoice, setWasEditingInvoice] = useState(false); // Track if last operation was an edit for success modal
 
   /* ----- Stats / content map ----- */
-  const [statistics, setStatistics] = useState<{ label: string; value: number }[]>([]);
-  const [totalAmountPaid, setTotalAmountPaid] = useState<number | null>(null);
   const stats = {
     ledger: [
       { label: "Sales Today", value: "14,200" },
@@ -166,37 +165,11 @@ export default function HomePage() {
     ],
   };
 
-  useEffect(() => {
-    // Fetch aggregated statistics from our API route
-    async function fetchStatisticsFromApi() {
-      try {
-        const res = await fetch('/api/statistics');
-        if (!res.ok) {
-          console.error('Failed to fetch /api/statistics', await res.text());
-          return;
-        }
-        const json = await res.json();
-        const arr = [
-          { label: 'Total Amount Paid', value: Number(json.totalAmountPaid) || 0 },
-          { label: 'Total Balance Due', value: Number(json.totalBalanceDue) || 0 },
-          { label: 'Total Invoices', value: Number(json.totalInvoices) || 0 },
-        ];
-        setStatistics(arr);
-        setTotalAmountPaid(Number(json.totalAmountPaid) || 0);
-      } catch (err) {
-        console.error('Error fetching statistics from API:', err);
-      }
-    }
-
-    fetchStatisticsFromApi();
-  }, []);
-
   const contentMap = {
     ledger: {
       title: "Cashbook",
       gradient: "from-green-500/90 via-emerald-500/80 to-lime-400/90",
-      // Use dynamic statistics for the main overview
-      stats: statistics.length > 0 ? statistics : stats.ledger,
+      stats: stats.ledger,
       features: ["Sales", "Expenses", "Inventory", "Purchases"],
     },
     debt: {
@@ -238,8 +211,58 @@ export default function HomePage() {
                           activeFeature?.toLowerCase().includes("quotation");
 
   /* ----- Fetch initial data ----- */
+  useEffect(() => {
+    const fetchInventory = async () => {
+      try {
+        const res = await fetch("/api/inventory");
+        if (res.ok) {
+          const items = await res.json();
+          setInventory(items || []);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
 
-  // Removed broken useEffect that returned JSX. All useEffect hooks must return void or a cleanup function, not JSX.
+    const fetchCustomers = async () => {
+      try {
+        const res = await fetch("/api/customers");
+        if (res.ok) {
+          const data = await res.json();
+          setCustomers(data || []);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchInventory();
+    fetchCustomers();
+  }, []);
+
+  /* ----- Fetch sales when user selects Sales feature ----- */
+  useEffect(() => {
+    if (activeFeature !== "Sales") return;
+
+    const fetchSales = async () => {
+      try {
+        
+        const res = await fetch("/api/sales");
+        if (res.ok) {
+          const data = await res.json();
+          setDataRows(data || []);
+          setSales(data || []);
+        } else {
+          setDataRows([]);
+        }
+      } catch (err) {
+        console.error("Error fetching sales:", err);
+        setDataRows([]);
+      }
+    };
+
+    fetchSales();
+  }, [activeFeature]);
 
   /* ----- Generic feature fetch ----- */
   useEffect(() => {
@@ -1080,7 +1103,7 @@ export default function HomePage() {
     alert("Failed to save invoice.");
   }
 };
-  
+
 const printInvoice = () => {
   window.print();
 };
@@ -1110,6 +1133,21 @@ const printInvoice = () => {
   const displayPrice = (item: InventoryItem) =>
     item.offer_price ?? item.price ?? 0;
 
+  /* ----- Fetch statistics from Supabase ----- */
+  const [statistics, setStatistics] = useState([]);
+
+  useEffect(() => {
+    async function fetchStatistics() {
+      const { data, error } = await supabase.from('statistics').select('*');
+      if (error) {
+        console.error('Error fetching statistics:', error);
+      } else {
+        setStatistics(data);
+      }
+    }
+
+    fetchStatistics();
+  }, []);
 
   return (
     <main className="fixed inset-0 bg-gradient-to-b from-gray-100 to-gray-50 overflow-hidden">
@@ -1157,20 +1195,13 @@ const printInvoice = () => {
                   <h3 className="text-lg font-semibold">Statistics Overview</h3>
                   <div className="text-xs bg-white/20 px-2 py-1 rounded-full">Today</div>
                 </div>
-                {/* Render all statistics cards returned from the API (prefer totalAmountPaid for Total Amount Paid) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => {
-                    const isTotalPaid = stat.label === 'Total Amount Paid';
-                    const displayValue = isTotalPaid && totalAmountPaid !== null ? totalAmountPaid : stat.value;
-                    return (
-                      <div key={idx} className="p-4 bg-white/10 rounded-2xl text-center">
-                        <div className="text-xl md:text-2xl font-bold">
-                          {typeof displayValue === 'number' ? `KES ${displayValue.toLocaleString('en-KE')}` : displayValue}
-                        </div>
-                        <div className="text-xs opacity-90 mt-1">{stat.label}</div>
-                      </div>
-                    );
-                  })}
+                <div className="grid grid-cols-3 text-center gap-3">
+                  {statistics.map((stat, index) => (
+                    <div key={index}>
+                      <div className="text-xl font-bold">{stat.value}</div>
+                      <div className="text-xs opacity-90">{stat.label}</div>
+                    </div>
+                  ))}
                 </div>
               </motion.div>
 
@@ -1893,7 +1924,6 @@ const printInvoice = () => {
                   <div>
                     <label className="block text-[11px] font-medium text-gray-600">IMEI</label>
                     <input
-
                       type="text"
                       name="imei"
                       placeholder="3569 42 10..."
@@ -2238,7 +2268,7 @@ const printInvoice = () => {
               {/* Action Buttons */}
               <div className="flex gap-1.5">
                 <button
-                  className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold"
+                  className="flex-1 px-2 py-1.5 rounded bg-gray-200 text-gray-700 font-semibold"
                   
                   onClick={resetInvoiceModal}
                   disabled={isSubmitting}
@@ -2246,7 +2276,7 @@ const printInvoice = () => {
                   Cancel
                 </button>
                 <button
-                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:bg-blue-400"
+                  className="flex-1 px-2 py-1.5 rounded bg-blue-600 text-white text-[10px] font-semibold disabled:bg-blue-400"
                   onClick={handleGenerateInvoice}
                   disabled={isSubmitting}
                 >
@@ -2470,7 +2500,7 @@ const printInvoice = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Total:</span>
-                <span className="text-xs font-bold text-blue-600">KES {calculateInvoiceTotal().toFixed(2)}</span>
+                <span className="font-bold text-blue-600">KES {calculateInvoiceTotal().toFixed(2)}</span>
               </div>
             </div>
             

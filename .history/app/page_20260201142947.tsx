@@ -142,7 +142,6 @@ export default function HomePage() {
 
   /* ----- Stats / content map ----- */
   const [statistics, setStatistics] = useState<{ label: string; value: number }[]>([]);
-  const [totalAmountPaid, setTotalAmountPaid] = useState<number | null>(null);
   const stats = {
     ledger: [
       { label: "Sales Today", value: "14,200" },
@@ -167,28 +166,26 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    // Fetch aggregated statistics from our API route
-    async function fetchStatisticsFromApi() {
+    async function fetchStatistics() {
       try {
-        const res = await fetch('/api/statistics');
-        if (!res.ok) {
-          console.error('Failed to fetch /api/statistics', await res.text());
+        const { data: invoices, error } = await supabase.from('invoices').select('amount_paid, balance_due');
+        if (error) {
+          console.error('Error fetching invoices:', error);
           return;
         }
-        const json = await res.json();
-        const arr = [
-          { label: 'Total Amount Paid', value: Number(json.totalAmountPaid) || 0 },
-          { label: 'Total Balance Due', value: Number(json.totalBalanceDue) || 0 },
-          { label: 'Total Invoices', value: Number(json.totalInvoices) || 0 },
-        ];
-        setStatistics(arr);
-        setTotalAmountPaid(Number(json.totalAmountPaid) || 0);
+        console.log('Fetched invoices:', invoices);
+        const totalSales = invoices?.reduce((sum: number, invoice: any) => sum + (Number(invoice.amount_paid) || 0), 0) || 0;
+        console.log('Total Amount Paid:', totalSales);
+        const totalOwed = invoices?.reduce((sum: number, invoice: any) => sum + (Number(invoice.balance_due) || 0), 0) || 0;
+        setStatistics([
+          { label: 'Total Amount Paid', value: totalSales },
+          { label: 'Total Balance Due', value: totalOwed },
+        ]);
       } catch (err) {
-        console.error('Error fetching statistics from API:', err);
+        console.error('Error calculating statistics:', err);
       }
     }
-
-    fetchStatisticsFromApi();
+    fetchStatistics();
   }, []);
 
   const contentMap = {
@@ -1157,20 +1154,12 @@ const printInvoice = () => {
                   <h3 className="text-lg font-semibold">Statistics Overview</h3>
                   <div className="text-xs bg-white/20 px-2 py-1 rounded-full">Today</div>
                 </div>
-                {/* Render all statistics cards returned from the API (prefer totalAmountPaid for Total Amount Paid) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => {
-                    const isTotalPaid = stat.label === 'Total Amount Paid';
-                    const displayValue = isTotalPaid && totalAmountPaid !== null ? totalAmountPaid : stat.value;
-                    return (
-                      <div key={idx} className="p-4 bg-white/10 rounded-2xl text-center">
-                        <div className="text-xl md:text-2xl font-bold">
-                          {typeof displayValue === 'number' ? `KES ${displayValue.toLocaleString('en-KE')}` : displayValue}
-                        </div>
-                        <div className="text-xs opacity-90 mt-1">{stat.label}</div>
-                      </div>
-                    );
-                  })}
+                {/* Show only one card: sum of amount_paid */}
+                <div className="flex flex-col items-center justify-center py-6">
+                  <div className="text-3xl font-extrabold">
+                    KES {statistics.length > 0 ? statistics[0].value.toLocaleString('en-KE') : '0'}
+                  </div>
+                  <div className="text-sm opacity-90 mt-1">Total Amount Paid</div>
                 </div>
               </motion.div>
 

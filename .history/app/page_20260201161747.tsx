@@ -1160,6 +1160,21 @@ const printInvoice = () => {
                 {/* Render all statistics cards returned from the API (prefer totalAmountPaid for Total Amount Paid) */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => {
+                    // prefer API values when available
+                    const totalPaid = totalAmountPaid ?? (statistics.find(s => s.label === 'Total Amount Paid')?.value ?? 0);
+                    const totalBalance = (statistics.find(s => s.label === 'Total Balance Due')?.value ?? 0);
+
+                    if (stat.label === 'Total Invoices') {
+                      return (
+                        <div key={idx} className="p-4 bg-white/10 rounded-2xl text-center">
+                          <div className="text-xl md:text-2xl font-bold">{Number(stat.value ?? 0).toLocaleString('en-KE')}</div>
+                          <div className="text-xs opacity-90 mt-1">{stat.label}</div>
+                          <div className="mt-3 text-sm">Total Paid: <span className="font-semibold">KES {Number(totalPaid).toLocaleString('en-KE')}</span></div>
+                          <div className="text-sm">Balance Due: <span className="font-semibold">KES {Number(totalBalance).toLocaleString('en-KE')}</span></div>
+                        </div>
+                      );
+                    }
+
                     const isTotalPaid = stat.label === 'Total Amount Paid';
                     const displayValue = isTotalPaid && totalAmountPaid !== null ? totalAmountPaid : stat.value;
                     return (

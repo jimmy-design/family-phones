@@ -1157,20 +1157,16 @@ const printInvoice = () => {
                   <h3 className="text-lg font-semibold">Statistics Overview</h3>
                   <div className="text-xs bg-white/20 px-2 py-1 rounded-full">Today</div>
                 </div>
-                {/* Render all statistics cards returned from the API (prefer totalAmountPaid for Total Amount Paid) */}
+                {/* Render all statistics cards returned from the API */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => {
-                    const isTotalPaid = stat.label === 'Total Amount Paid';
-                    const displayValue = isTotalPaid && totalAmountPaid !== null ? totalAmountPaid : stat.value;
-                    return (
-                      <div key={idx} className="p-4 bg-white/10 rounded-2xl text-center">
-                        <div className="text-xl md:text-2xl font-bold">
-                          {typeof displayValue === 'number' ? `KES ${displayValue.toLocaleString('en-KE')}` : displayValue}
-                        </div>
-                        <div className="text-xs opacity-90 mt-1">{stat.label}</div>
+                  {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => (
+                    <div key={idx} className="p-4 bg-white/10 rounded-2xl">
+                      <div className="text-xl md:text-2xl font-bold">
+                        {typeof stat.value === 'number' ? `KES ${stat.value.toLocaleString('en-KE')}` : stat.value}
                       </div>
-                    );
-                  })}
+                      <div className="text-xs opacity-90 mt-1">{stat.label}</div>
+                    </div>
+                  ))}
                 </div>
               </motion.div>
 
