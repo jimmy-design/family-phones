@@ -13,7 +13,6 @@ import PaymentModal from '@/components/PaymentModal';
 import AddCustomerModal from '@/components/AddCustomerModal';
 import AddStaffModal from '@/components/AddStaffModal';
 import AddSupplierModal from '@/components/AddSupplierModal';
-import { supabase } from '@/lib/db';
 
 /* ----- Types ----- */
 interface InventoryItem {
@@ -239,7 +238,38 @@ export default function HomePage() {
 
   /* ----- Fetch initial data ----- */
 
-  // Removed broken useEffect that returned JSX. All useEffect hooks must return void or a cleanup function, not JSX.
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const [inventoryRes, customersRes] = await Promise.all([
+          fetch("/api/inventory"),
+          fetch("/api/customers"),
+        ]);
+
+        if (inventoryRes.ok) {
+          const inventoryData = await inventoryRes.json();
+          setInventory(Array.isArray(inventoryData) ? inventoryData : []);
+        } else {
+          console.error("Failed to fetch inventory:", await inventoryRes.text());
+          setInventory([]);
+        }
+
+        if (customersRes.ok) {
+          const customersData = await customersRes.json();
+          setCustomers(Array.isArray(customersData) ? customersData : []);
+        } else {
+          console.error("Failed to fetch customers:", await customersRes.text());
+          setCustomers([]);
+        }
+      } catch (err) {
+        console.error("Error fetching initial data:", err);
+        setInventory([]);
+        setCustomers([]);
+      }
+    };
+
+    fetchInitialData();
+  }, []);
 
   /* ----- Generic feature fetch ----- */
   useEffect(() => {
