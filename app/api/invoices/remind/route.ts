@@ -107,14 +107,30 @@ async function sendSmsNotification(phone: string, message: string): Promise<bool
   }
 }
 
-// POST - Send payment reminders to all customers with partially paid invoices
-export async function POST() {
+// An empty body preserves the bulk action; a target always limits the query.
+export async function POST(request: Request) {
   try {
-    // Get all invoices with "Partially Paid" status
-    const { data: invoices, error: invoicesError } = await supabase
+    const rawBody = await request.text();
+    let invoiceNumber: string | undefined;
+    if (rawBody.trim()) {
+      let body;
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        return NextResponse.json({ error: "Invalid reminder request" }, { status: 400 });
+      }
+      if (!body || typeof body.invoice_number !== "string" || !body.invoice_number.trim()) {
+        return NextResponse.json({ error: "An invoice number is required" }, { status: 400 });
+      }
+      invoiceNumber = body.invoice_number.trim();
+    }
+    let query = supabase
       .from("invoices")
-      .select("invoice_number, total_amount, amount_paid, balance_due, currency, customer_id")
-      .eq("payment_status", "Partially Paid");
+      .select("invoice_number, total_amount, amount_paid, balance_due, currency, customer_id");
+    query = invoiceNumber
+      ? query.eq("invoice_number", invoiceNumber).gt("balance_due", 0)
+      : query.eq("payment_status", "Partially Paid");
+    const { data: invoices, error: invoicesError } = await query;
 
     if (invoicesError) {
       console.error("Error fetching invoices:", invoicesError);
@@ -126,6 +142,9 @@ export async function POST() {
 
     const typedInvoices = (invoices || []) as Invoice[];
 
+    if (invoiceNumber && typedInvoices.length !== 1) {
+      return NextResponse.json({ error: "Invoice not found or has no outstanding balance" }, { status: 400 });
+    }
     if (typedInvoices.length === 0) {
       return NextResponse.json({
         success: true,

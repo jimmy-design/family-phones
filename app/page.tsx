@@ -7,7 +7,7 @@ import Image from "next/image";
 import BottomNav from "@/components/layout/BottomNav";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
-import { FiLogOut, FiX } from "react-icons/fi";
+import { FiLogOut, FiX, FiPlus, FiBell, FiCreditCard, FiDownload, FiFileText, FiCheckCircle, FiClock, FiTrendingUp } from "react-icons/fi";
 import Swal from 'sweetalert2';
 import PaymentModal from '@/components/PaymentModal';
 import AddCustomerModal from '@/components/AddCustomerModal';
@@ -68,6 +68,7 @@ export default function HomePage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("All");
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
   const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
   const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
@@ -123,7 +124,7 @@ export default function HomePage() {
   const [taxType, setTaxType] = useState<string>("none");
   const [taxAmount, setTaxAmount] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSendingReminders, setIsSendingReminders] = useState(false);
+  const [remindingInvoice, setRemindingInvoice] = useState<string | null>(null);
   
   /* ----- Invoice Confirm Modal State ----- */
   const [invoiceConfirmOpen, setInvoiceConfirmOpen] = useState(false);
@@ -384,10 +385,21 @@ export default function HomePage() {
   };
 
   const filteredRows = dataRows.filter((row) =>
+    (!isInvoiceFeature || invoiceStatusFilter === "All" || (row.payment_status || "Unpaid") === invoiceStatusFilter) &&
     Object.values(row).some((val) =>
       val?.toString().toLowerCase().includes(search.toLowerCase())
     )
   );
+  const invoiceMoney = (value: unknown, currency = "KES") =>
+    `${currency} ${Number(value || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const invoiceSummary = (field: string) => {
+    const totals = dataRows.reduce<Record<string, number>>((result, row) => {
+      const currency = row.currency || "KES";
+      result[currency] = (result[currency] || 0) + Number(row[field] || 0);
+      return result;
+    }, {});
+    return Object.entries(totals).map(([currency, value]) => invoiceMoney(value, currency)).join(" / ") || invoiceMoney(0);
+  };
 
   const getOrderedKeys = (row: any) => {
     let keys = Object.keys(row);
@@ -649,91 +661,29 @@ export default function HomePage() {
     setInvoiceItems(invoiceItems.filter(item => item.id !== id));
   };
 
-  const handleSendReminders = async () => {
-    if (isSendingReminders) return;
-    
-    const partiallyPaidCount = dataRows.filter((row: any) => row.payment_status === "Partially Paid").length;
-    
-    if (partiallyPaidCount === 0) {
-      Swal.fire({
-        icon: 'info',
-        title: 'No Reminders to Send',
-        text: 'No customers with partially paid invoices found.',
-        confirmButtonColor: '#7c3aed'
-      });
-      return;
-    }
-    
-    const result = await Swal.fire({
-      icon: 'question',
-      title: 'Send Payment Reminders?',
-      html: `<p>You are about to send SMS reminders to <strong>${partiallyPaidCount}</strong> customer(s) with partially paid invoices.</p>`,
-      showCancelButton: true,
-      confirmButtonText: 'Send Reminders',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#7c3aed',
-      cancelButtonColor: '#6b7280'
-    });
-    
-    if (!result.isConfirmed) {
-      return;
-    }
-    
-    setIsSendingReminders(true);
-    
-    // Show loading state
-    Swal.fire({
-      title: 'Sending Reminders...',
-      html: 'Please wait while we send SMS reminders to customers.',
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      showConfirmButton: false,
-      didOpen: () => {
-        Swal.showLoading();
-      }
-    });
-    
+  const handleInvoiceReminder = async (invoice: any) => {
+    if (remindingInvoice || Number(invoice.balance_due || 0) <= 0) return;
+    setRemindingInvoice(invoice.invoice_number);
     try {
       const response = await fetch("/api/invoices/remind", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice_number: invoice.invoice_number }),
       });
-      
       const data = await response.json();
-      
-      if (response.ok) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Reminders Sent!',
-          html: `
-            <div class="text-left">
-              <p><strong>Sent:</strong> ${data.sent}</p>
-              <p><strong>Failed:</strong> ${data.failed}</p>
-              <p><strong>Total:</strong> ${data.total}</p>
-            </div>
-          `,
-          confirmButtonColor: '#7c3aed'
-        });
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Failed to Send',
-          text: data.error || 'Unknown error occurred',
-          confirmButtonColor: '#7c3aed'
-        });
-      }
-    } catch (error) {
-      console.error("Error sending reminders:", error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to send payment reminders. Please try again.',
-        confirmButtonColor: '#7c3aed'
+      const sent = response.ok && data.sent === 1 && data.failed === 0;
+      await Swal.fire({
+        icon: sent ? "success" : "error",
+        title: sent ? "Reminder sent" : "Reminder not sent",
+        text: sent
+          ? `SMS reminder sent to the customer for invoice ${invoice.invoice_number}.`
+          : data.error || "Unable to send the SMS. Check the customer's phone number and try again.",
+        confirmButtonColor: "#7c3aed",
       });
+    } catch {
+      await Swal.fire({ icon: "error", title: "Reminder not sent", text: "Unable to send the SMS. Please try again." });
     } finally {
-      setIsSendingReminders(false);
+      setRemindingInvoice(null);
     }
   };
 
@@ -1142,13 +1092,13 @@ const printInvoice = () => {
 
 
   return (
-    <main className="fixed inset-0 bg-gradient-to-b from-gray-100 to-gray-50 overflow-hidden">
+    <main className="fixed inset-0 bg-slate-100 overflow-hidden">
       <div className="absolute top-[-120px] right-[-120px] w-[200px] h-[200px] bg-gradient-to-r from-blue-300 to-indigo-300 opacity-30 blur-3xl rounded-full pointer-events-none" />
       <div className="absolute bottom-[-120px] left-[-120px] w-[200px] h-[200px] bg-gradient-to-r from-pink-300 to-purple-300 opacity-25 blur-3xl rounded-full pointer-events-none" />
 
       <div className="relative flex flex-col md:flex-row h-full w-full px-4 md:px-6 pt-6 pb-24 gap-6 overflow-hidden">
         {/* RIGHT SIDE */}
-        <div className="flex flex-col flex-1 overflow-hidden order-1 md:order-2">
+        <div className="flex min-w-0 flex-col flex-1 overflow-hidden order-1 md:order-2">
           {/* Mobile header with title and logout */}
           <div className="flex items-center justify-between md:hidden mb-3">
             <h2 className="text-xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent">
@@ -1173,36 +1123,44 @@ const printInvoice = () => {
           </div>
 
           {/* Desktop title */}
-          <h2 className="hidden md:block text-2xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent mb-3">
-            {activeFeature || current.title}
-          </h2>
+          <div className="hidden md:block mb-5">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-blue-600">Family Phones / {current.title}</p>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900">{activeFeature || current.title}</h2>
+            <p className="mt-2 text-sm text-slate-500">{isInvoiceFeature ? "Create invoices, track customer balances, and manage payments." : "Your business at a glance. Select a workspace to get started."}</p>
+          </div>
 
           {!activeFeature && (
             <>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                className={`p-5 rounded-3xl bg-gradient-to-r ${current.gradient} text-white shadow-xl backdrop-blur-md`}
-              >
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-semibold">Statistics Overview</h3>
-                  <div className="text-xs bg-white/20 px-2 py-1 rounded-full">Today</div>
+              <section aria-label="Statistics overview" className="shrink-0">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold text-slate-800">Statistics overview</h3>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">Business summary</span>
                 </div>
-                {/* Render all statistics cards returned from the API (prefer totalAmountPaid for Total Amount Paid) */}
-                <div className="flex flex-row gap-1 py-1 items-stretch">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:gap-4">
                   {(statistics.length > 0 ? statistics : (current.stats || [])).map((stat, idx) => {
-                    const isTotalPaid = stat.label === 'Total Amount Paid';
-                    const displayValue = isTotalPaid && totalAmountPaid !== null ? totalAmountPaid : stat.value;
+                    const displayValue = stat.label === "Total Amount Paid" && totalAmountPaid !== null ? totalAmountPaid : stat.value;
+                    const styles = [
+                      { surface: "from-emerald-50/80 to-white", accent: "bg-emerald-100/80 text-emerald-600", decoration: "bg-emerald-100/60", icon: FiCheckCircle },
+                      { surface: "from-amber-50/80 to-white", accent: "bg-amber-100/80 text-amber-600", decoration: "bg-amber-100/60", icon: FiClock },
+                      { surface: "from-blue-50/80 to-white", accent: "bg-blue-100/80 text-blue-600", decoration: "bg-blue-100/60", icon: FiFileText },
+                    ];
+                    const style = styles[idx % styles.length];
+                    const Icon = style.icon;
                     return (
-                      <div key={idx} className="p-2 rounded-2xl text-center flex-1 basis-0 min-w-0">
-                        <div className="text-sm sm:text-base md:text-lg lg:text-xl font-extrabold truncate leading-tight">
-                          {typeof displayValue === 'number' ? displayValue.toLocaleString('en-KE') : displayValue}
+                      <div key={stat.label} className={`relative isolate overflow-hidden rounded-3xl border border-white bg-gradient-to-br p-4 shadow-sm ring-1 ring-slate-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-md lg:p-5 ${style.surface}`}>
+                        <div aria-hidden="true" className={`pointer-events-none absolute -right-6 -top-6 -z-10 h-24 w-24 rounded-full ${style.decoration}`} />
+                        <div className="mb-4 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-slate-600 lg:text-sm">{stat.label}</p>
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${style.accent}`}><Icon aria-hidden="true" className="h-5 w-5" /></span>
                         </div>
-                        <div className="text-xs opacity-90 mt-1 truncate">{stat.label}</div>
+                        <p className="break-words text-xl font-bold tracking-tight text-slate-900 lg:text-2xl">
+                          {typeof displayValue === "number" ? displayValue.toLocaleString("en-KE") : displayValue}
+                        </p>
                       </div>
                     );
                   })}
                 </div>
-              </motion.div>
+              </section>
 
               <div className="flex md:hidden flex-wrap justify-center gap-3 mt-5">
                 {current.features.map((f, i) => (
@@ -1222,40 +1180,58 @@ const printInvoice = () => {
             </>
           )}
 
+          {isInvoiceFeature && (
+            <div className="mb-5 grid shrink-0 grid-cols-2 gap-3 lg:gap-4 xl:grid-cols-4">
+              {[
+                { label: "Total invoices", value: dataRows.length.toLocaleString(), detail: "Invoices & quotations", icon: FiFileText, surface: "from-blue-50/80 to-white", accent: "bg-blue-100/80 text-blue-600", decoration: "bg-blue-100/60" },
+                { label: "Total invoiced", value: invoiceSummary("total_amount"), detail: "Total billing value", icon: FiTrendingUp, surface: "from-indigo-50/80 to-white", accent: "bg-indigo-100/80 text-indigo-600", decoration: "bg-indigo-100/60" },
+                { label: "Payments received", value: invoiceSummary("amount_paid"), detail: "Collected from customers", icon: FiCheckCircle, surface: "from-emerald-50/80 to-white", accent: "bg-emerald-100/80 text-emerald-600", decoration: "bg-emerald-100/60" },
+                { label: "Outstanding balance", value: invoiceSummary("balance_due"), detail: "Awaiting payment", icon: FiClock, surface: "from-amber-50/80 to-white", accent: "bg-amber-100/80 text-amber-600", decoration: "bg-amber-100/60" },
+              ].map(({ icon: Icon, ...stat }) => (
+                <div key={stat.label} className={`relative isolate overflow-hidden rounded-3xl border border-white bg-gradient-to-br p-4 shadow-sm ring-1 ring-slate-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-md lg:p-5 ${stat.surface}`}>
+                  <div aria-hidden="true" className={`pointer-events-none absolute -right-6 -top-6 -z-10 h-24 w-24 rounded-full ${stat.decoration}`} />
+                  <div className="mb-4 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-600 lg:text-sm">{stat.label}</p>
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${stat.accent}`}><Icon aria-hidden="true" className="h-5 w-5" /></span>
+                  </div>
+                  <p className="break-words text-lg font-bold tracking-tight text-slate-900 lg:text-xl">{stat.value}</p>
+                  <p className="mt-2 text-xs text-slate-500">{stat.detail}</p>
+                </div>
+              ))}
+            </div>
+          )}
           {activeFeature && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 shadow-inner mt-6 flex flex-col flex-1 overflow-hidden">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between p-2 md:p-3 border-b bg-gray-50 gap-2">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex min-h-0 flex-col flex-1 overflow-hidden">
+              <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between p-4 border-b border-slate-100 bg-white gap-3">
                 <input
                   type="text"
                   placeholder={`Search ${activeFeature}...`}
-                  className="w-full md:w-1/2 p-2 text-sm border rounded-lg focus:outline-none focus:ring"
+                  aria-label={`Search ${activeFeature}`} className="w-full xl:w-80 px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {isInvoiceFeature && <select aria-label="Filter invoice status" value={invoiceStatusFilter} onChange={e => setInvoiceStatusFilter(e.target.value)} className="min-h-[44px] rounded-full border-slate-200 bg-slate-50 py-2.5 pl-4 pr-9 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white focus:border-blue-400 focus:ring-blue-200">
+                    <option value="All">All statuses</option>
+                    {["Paid", "Unpaid", "Partially Paid", "Overdue"].map(status => <option key={status}>{status}</option>)}
+                  </select>}
                   {isInvoiceFeature ? (
                     <>
                       <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-blue-600 text-white rounded-lg font-semibold"
+                        className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 active:scale-[0.97] md:flex-none md:text-sm bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-sm shadow-blue-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-md focus-visible:ring-blue-200"
                         onClick={() => setIsInvoiceModalOpen(true)}
                       >
-                        Generate
+                        <FiPlus aria-hidden="true" className="h-4 w-4" /> New invoice
                       </button>
+
                       <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-purple-600 text-white rounded-lg font-semibold disabled:bg-purple-400"
-                        onClick={handleSendReminders}
-                        disabled={isSendingReminders}
-                      >
-                        {isSendingReminders ? "Sending..." : "Remind"}
-                      </button>
-                      <button
-                        className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-green-600 text-white rounded-lg font-semibold"
+                        className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 active:scale-[0.97] md:flex-none md:text-sm bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow-sm shadow-emerald-200 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-md focus-visible:ring-emerald-200"
                         onClick={() => {
                           setInvoiceToPay(null);
                           setIsPaymentModalOpen(true);
                         }}
                       >
-                        Update
+                        <FiCreditCard aria-hidden="true" className="h-4 w-4" /> Record payment
                       </button>
                     </>
                   ) : activeFeature === "Customers" ? (
@@ -1315,13 +1291,13 @@ const printInvoice = () => {
                       Add
                     </button>
                   )}
-                  <button className="flex-1 md:flex-none px-3 py-2 text-xs md:text-sm bg-gray-200 rounded-lg font-semibold">
-                    Export
+                  <button className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 active:scale-[0.97] md:flex-none md:text-sm">
+                    <FiDownload aria-hidden="true" className="h-4 w-4" /> Export
                   </button>
                 </div>
               </div>
 
-              <div className="overflow-y-auto flex-1">
+              <div className="overflow-auto flex-1">
                 {filteredRows.length > 0 ? (
                   <>
                     {/* Mobile View - Card Layout for Invoices */}
@@ -1347,7 +1323,7 @@ const printInvoice = () => {
                                 <span className="text-gray-500">Due: </span>
                                 <span className="font-semibold text-red-600">{row.balance_due || 0}</span>
                               </div>
-                              <button className="flex-shrink-0 ml-2 text-blue-600 font-semibold text-[10px]">See All</button>
+                              <button type="button" onClick={(event) => { event.stopPropagation(); void handleInvoiceReminder(row); }} disabled={remindingInvoice !== null || Number(row.balance_due || 0) <= 0} title={Number(row.balance_due || 0) > 0 ? "Send SMS reminder to this customer" : "No outstanding balance"} aria-label={`Send SMS reminder for invoice ${row.invoice_number}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100 bg-violet-50 text-violet-600 transition hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 disabled:cursor-not-allowed disabled:opacity-40"><FiBell aria-hidden="true" className={`h-4 w-4 ${remindingInvoice === row.invoice_number ? "animate-pulse" : ""}`} /></button>
                             </div>
                             {/* Row 2 */}
                             <div className="flex justify-between items-center text-[10px] text-gray-600">
@@ -1497,7 +1473,24 @@ const printInvoice = () => {
                     )}
 
                     {/* Desktop View - Table Layout */}
-                    <table className="hidden md:table w-full text-sm text-left border-collapse">
+                    {isInvoiceFeature ? (
+                      <table className="hidden md:table w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>
+                          {["Invoice", "Customer", "Due date", "Total", "Balance due", "Status", "Actions"].map(label => <th key={label} className="whitespace-nowrap px-5 py-4 font-semibold">{label}</th>)}
+                        </tr></thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredRows.map((row, index) => <tr key={row.id || index} className="hover:bg-slate-50/80">
+                            <td className="whitespace-nowrap px-5 py-4"><p className="font-semibold text-blue-700">{row.invoice_number}</p><p className="mt-1 text-xs text-slate-400">{row.invoice_number?.startsWith("QT") ? "Quotation" : "Invoice"}</p></td>
+                            <td className="px-5 py-4 font-medium text-slate-700">{row.customer_name || row.full_name || customers.find(c => c.customer_id === row.customer_id)?.full_name || "Unknown customer"}</td>
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-500">{row.due_date ? String(row.due_date).slice(0, 10) : "No due date"}</td>
+                            <td className="whitespace-nowrap px-5 py-4 tabular-nums text-slate-600">{invoiceMoney(row.total_amount, row.currency)}</td>
+                            <td className="whitespace-nowrap px-5 py-4 font-semibold tabular-nums text-slate-900">{invoiceMoney(row.balance_due, row.currency)}</td>
+                            <td className="whitespace-nowrap px-5 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${row.payment_status === "Paid" ? "bg-emerald-50 text-emerald-700" : row.payment_status === "Partially Paid" ? "bg-amber-50 text-amber-700" : row.payment_status === "Overdue" ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600"}`}>{row.payment_status || "Unpaid"}</span></td>
+                            <td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => openInvoiceDetail(row)} className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">View</button><button onClick={() => openEditInvoice(row)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Edit</button><button type="button" onClick={(event) => { event.stopPropagation(); void handleInvoiceReminder(row); }} disabled={remindingInvoice !== null || Number(row.balance_due || 0) <= 0} title={Number(row.balance_due || 0) > 0 ? "Send SMS reminder to this customer" : "No outstanding balance"} aria-label={`Send SMS reminder for invoice ${row.invoice_number}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100 bg-violet-50 text-violet-600 transition hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 disabled:cursor-not-allowed disabled:opacity-40"><FiBell aria-hidden="true" className={`h-4 w-4 ${remindingInvoice === row.invoice_number ? "animate-pulse" : ""}`} /></button></div></td>
+                          </tr>)}
+                        </tbody>
+                      </table>
+                    ) : <table className="hidden md:table w-full text-sm text-left border-collapse">
                       <thead className="bg-gray-100 text-gray-700">
                         <tr>
                           {getKeysForFeature(filteredRows[0]).map((col) => (
@@ -1545,7 +1538,7 @@ const printInvoice = () => {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table>}
                   </>
                 ) : (
                   <div className="text-center text-gray-400 italic py-8">No records found.</div>
@@ -1584,7 +1577,7 @@ const printInvoice = () => {
         </div>
 
         {/* LEFT SIDEBAR */}
-        <div className="hidden md:flex flex-col items-center gap-4 w-full md:w-[240px] flex-shrink-0 order-2 md:order-1 mt-8">
+        <div className="hidden md:flex flex-col items-center gap-4 w-full md:w-[220px] flex-shrink-0 order-2 md:order-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="w-full flex justify-center mb-2">
             <Image
              src="/family.png"
@@ -1605,7 +1598,7 @@ const printInvoice = () => {
                 whileTap={{ scale: 0.96 }}
                 whileHover={{ scale: 1.05 }}
                 onClick={() => setActiveFeature(f)}
-                className={`w-[250px] h-[55px] flex items-center justify-center bg-white text-gray-800 font-semibold text-sm text-center rounded-2xl shadow-md border border-gray-100 cursor-pointer transition-all ${
+                className={`w-full min-h-[48px] px-3 flex items-center justify-center bg-white text-gray-800 font-semibold text-sm text-center rounded-2xl shadow-md border border-gray-100 cursor-pointer transition-all ${
                   activeFeature === f ? "ring-2 ring-blue-400" : "hover:shadow-xl"
                 }`}
               >
@@ -1622,7 +1615,7 @@ const printInvoice = () => {
                 localStorage.removeItem("user");
                 router.push("/login");
               }}
-              className="w-[250px] h-[55px] flex items-center justify-center gap-2 bg-red-500 text-white font-semibold text-sm text-center rounded-2xl shadow-md border border-red-400 cursor-pointer transition-all hover:bg-red-600 hover:shadow-xl mt-4"
+              className="w-full min-h-[48px] px-3 flex items-center justify-center gap-2 bg-red-500 text-white font-semibold text-sm text-center rounded-2xl shadow-md border border-red-400 cursor-pointer transition-all hover:bg-red-600 hover:shadow-xl mt-4"
             >
               <FiLogOut className="text-lg" />
               Logout
@@ -2060,43 +2053,52 @@ const printInvoice = () => {
 
       {/* Invoice/Quotation Modal */}
       {isInvoiceModalOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-2 pb-28">
-          <div className="bg-white rounded-lg p-2.5 md:p-3 w-full md:w-[420px] max-w-[95vw] h-[75vh] md:h-auto md:max-h-[85vh] flex flex-col shadow-lg">
-            <h2 className="text-sm md:text-base font-bold mb-1.5">
-              Create Invoice/Quotation
-            </h2>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-2 pb-28 md:p-6">
+          <div role="dialog" aria-modal="true" aria-labelledby="create-invoice-title" className="bg-white rounded-3xl p-3 md:p-6 w-full md:w-[720px] lg:w-[860px] max-w-[95vw] h-[75vh] md:h-[85vh] flex flex-col shadow-2xl">
+            <div className="mb-3 flex shrink-0 items-start justify-between gap-3 md:mb-5">
+              <div className="flex items-center gap-3">
+                <span className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 md:flex"><FiFileText className="h-6 w-6" /></span>
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-blue-600">Family Phones / Billing</p>
+                  <h2 id="create-invoice-title" className="text-lg font-bold tracking-tight text-slate-900 md:text-3xl">{isEditingInvoice ? "Edit" : "Create"} {invoiceType === "invoice" ? "invoice" : "quotation"}</h2>
+                  <p className="mt-1 hidden text-base text-slate-500 md:block">Add your customer, item details, and payment terms.</p>
+                </div>
+              </div>
+              <button onClick={resetInvoiceModal} disabled={isSubmitting} aria-label="Close invoice form" className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"><FiX className="h-5 w-5" /></button>
+            </div>
 
             {/* Invoice Type Tabs */}
-            <div className="flex gap-1 mb-2 border-b pb-1">
+            <div className="flex shrink-0 gap-1 rounded-2xl bg-slate-100 p-1 mb-3 md:mb-5">
               <button
                 onClick={() => setInvoiceType("invoice")}
-                className={`flex-1 py-1 px-2 rounded font-semibold text-[10px] transition-all ${
+                className={`flex-1 py-2 px-3 rounded-xl font-semibold text-sm md:text-base transition-all ${
                   invoiceType === "invoice"
-                    ? "bg-blue-600 text-white shadow-md"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200/70"
+                    : "text-slate-500 hover:bg-white/60"
                 }`}
               >
                 Invoice
               </button>
               <button
                 onClick={() => setInvoiceType("quotation")}
-                className={`flex-1 py-1 px-2 rounded font-semibold text-[10px] transition-all ${
+                className={`flex-1 py-2 px-3 rounded-xl font-semibold text-sm md:text-base transition-all ${
                   invoiceType === "quotation"
-                    ? "bg-blue-600 text-white shadow-md"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200/70"
+                    : "text-slate-500 hover:bg-white/60"
                 }`}
               >
                 Quote
               </button>
             </div>
 
-            {/* Fixed Top Section - Customer & Dates */}
-            <div className="flex-shrink-0 space-y-2 mb-2">
+            <div className="flex-1 overflow-y-auto min-h-0 pr-1 md:pr-2">
+            {/* Customer & Dates */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[2fr_1fr_1fr] mb-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3 md:p-4">
               {/* Customer Selection */}
               <div>
-                <label className="block text-[9px] font-semibold mb-0.5">Customer *</label>
+                <label className="block text-sm font-medium text-slate-600 mb-1.5">Customer *</label>
                 <select
-                  className="w-full p-1 border rounded text-[10px]"
+                  className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200"
                   value={invoiceCustomerId}
                   onChange={(e) => setInvoiceCustomerId(Number(e.target.value))}
                 >
@@ -2110,25 +2112,25 @@ const printInvoice = () => {
               </div>
 
               {/* Dates */}
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-3 md:contents">
                 <div>
-                  <label className="block text-[9px] font-semibold mb-0.5">
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">
                     {invoiceType === "invoice" ? "Invoice Date *" : "Quote Date *"}
                   </label>
                   <input
                     type="date"
-                    className="w-full p-1 border rounded text-[10px]"
+                    className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200"
                     value={invoiceDate}
                     onChange={(e) => setInvoiceDate(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold mb-0.5">
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">
                     {invoiceType === "invoice" ? "Due Date *" : "Valid Until *"}
                   </label>
                   <input
                     type="date"
-                    className="w-full p-1 border rounded text-[10px]"
+                    className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
                   />
@@ -2137,53 +2139,75 @@ const printInvoice = () => {
             </div>
 
             {/* Scrollable Items Section */}
-            <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+            <div>
               <div>
-                <div className="flex justify-between items-center mb-1 sticky top-0 bg-white py-1">
-                  <label className="text-[9px] font-semibold">Items *</label>
+                <div className="flex justify-between items-center mb-3 bg-white py-1">
+                  <label className="text-sm font-semibold text-slate-800">Invoice items *</label>
                   <button
                     onClick={handleAddInvoiceItem}
-                    className="px-1.5 py-0.5 text-[9px] bg-green-600 text-white rounded hover:bg-green-700"
+                    className="px-3 py-2 text-sm font-semibold bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition"
                   >
-                    + Add
+                    + Add item
                   </button>
                 </div>
 
                 {/* Items List */}
-                <div className="space-y-1.5">
+                <div className="space-y-3">
                   {invoiceItems.map((item, index) => (
-                    <div key={item.id} className="border rounded p-1.5 bg-gray-50">
+                    <div key={item.id} className="border border-slate-200 rounded-2xl p-3 md:p-4 bg-slate-50/50">
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-[9px] font-semibold text-gray-600">#{index + 1}</span>
+                        <span className="text-xs font-semibold text-slate-500">Item {index + 1}</span>
                         {invoiceItems.length > 1 && (
                           <button
                             onClick={() => handleRemoveInvoiceItem(item.id)}
-                            className="text-red-600 hover:text-red-800 text-[10px] leading-none"
+                            aria-label={`Remove item ${index + 1}`}
+                            className="rounded-full p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                           >
-                            ✕
+                            <FiX className="h-4 w-4" />
                           </button>
                         )}
                       </div>
                       
                       <div className="mb-1">
-                        <input
-                          type="text"
-                          className="w-full p-1 border rounded text-[10px]"
+                        <textarea
+                          rows={3}
+                          aria-label={`Description for item ${index + 1}`}
+                          className="w-full resize-y rounded-lg border border-slate-200 p-2 text-sm leading-relaxed focus:border-blue-500 focus:ring-blue-500"
                           value={item.description}
                           onChange={(e) =>
                             handleInvoiceItemChange(item.id, "description", e.target.value)
                           }
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                            event.preventDefault();
+                            const input = event.currentTarget;
+                            const { selectionStart: start, selectionEnd: end, value } = input;
+                            const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+                            const currentLine = value.slice(lineStart, start);
+                            const marker = currentLine.match(/^(\s*)([*\-\u2022])\s/);
+                            // Enter on an empty bullet finishes the list.
+                            const emptyBullet = /^[ \t]*[*\-\u2022][ \t]*$/.test(currentLine);
+                            const insertAt = emptyBullet ? lineStart : start;
+                            const next = emptyBullet ? "" : `\n${marker ? marker[1] + marker[2] : "*"} `;
+                            handleInvoiceItemChange(item.id, "description", value.slice(0, insertAt) + next + value.slice(end));
+                            requestAnimationFrame(() => {
+                              input.setSelectionRange(insertAt + next.length, insertAt + next.length);
+                            });
+                          }}
                           placeholder="Description"
                         />
+                        <p className="mt-1 text-xs text-slate-500">Enter adds a bullet. Shift+Enter adds a plain line.</p>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="mb-1 mt-3 grid grid-cols-3 gap-3 text-xs font-medium text-slate-500"><span>Quantity</span><span>Unit price (KES)</span><span className="text-right">Amount (KES)</span></div>
+                      <div className="grid grid-cols-3 gap-3">
                         <div>
                           <input
                             type="text"
+                            aria-label={`Quantity for item ${index + 1}`}
                             inputMode="numeric"
                             pattern="[0-9]*"
-                            className="w-full p-1 border rounded text-[10px]"
+                            className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200"
                             value={item.quantity === 0 ? "" : item.quantity}
                             onChange={(e) => {
                               const val = e.target.value.replace(/[^0-9]/g, "");
@@ -2195,9 +2219,10 @@ const printInvoice = () => {
                         <div>
                           <input
                             type="text"
+                            aria-label={`Rate for item ${index + 1}`}
                             inputMode="decimal"
                             pattern="[0-9]*\.?[0-9]*"
-                            className="w-full p-1 border rounded text-[10px]"
+                            className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200"
                             value={item.rate === 0 ? "" : item.rate}
                             onChange={(e) => {
                               const val = e.target.value.replace(/[^0-9.]/g, "");
@@ -2207,7 +2232,7 @@ const printInvoice = () => {
                           />
                         </div>
                         <div>
-                          <div className="p-1 bg-white border rounded text-[10px] font-semibold text-right">
+                          <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm md:text-base font-semibold text-right">
                             {item.amount === 0 ? "" : item.amount.toFixed(0)}
                           </div>
                         </div>
@@ -2218,12 +2243,12 @@ const printInvoice = () => {
               </div>
 
               {/* Tax selection */}
-              <div className="mt-2">
-                <label className="block text-[9px] font-semibold mb-0.5">Tax</label>
+              <div className="mt-4 rounded-2xl border border-slate-200 p-3 md:p-4">
+                <label className="block text-sm font-medium text-slate-600 mb-1.5">Tax</label>
                 <select
                   value={taxType}
                   onChange={(e) => setTaxType(e.target.value)}
-                  className="w-full p-1 border rounded text-[10px] mb-2"
+                  className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200 mb-2"
                 >
                   <option value="none">None</option>
                   <option value="vat">VAT (16%)</option>
@@ -2232,9 +2257,9 @@ const printInvoice = () => {
                 </select>
 
                 {/* Notes */}
-                <label className="block text-[9px] font-semibold mb-0.5">Notes</label>
+                <label className="block text-sm font-medium text-slate-600 mb-1.5">Notes</label>
                 <textarea
-                  className="w-full p-1 border rounded text-[10px]"
+                  className="w-full min-w-0 px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm md:text-base focus:border-blue-500 focus:ring-blue-200"
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -2243,32 +2268,34 @@ const printInvoice = () => {
               </div>
             </div>
 
+            </div>
+
             {/* Fixed Bottom Section - Total & Buttons */}
-            <div className="flex-shrink-0 mt-2 pt-2 border-t">
+            <div className="flex-shrink-0 mt-3 pt-3 border-t border-slate-100">
               {/* Subtotal and Total Summary */}
-              <div className="p-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded border border-blue-200 mb-2">
-                <div className="space-y-0.5">
-                  <div className="flex justify-between items-center text-[9px]">
+              <div className="p-3 md:p-4 bg-gradient-to-br from-blue-50 to-indigo-50/50 rounded-2xl border border-blue-100 mb-3">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-sm text-slate-600">
                     <span className="text-gray-600">Subtotal:</span>
                     <span className="font-semibold">{calculateInvoiceTotal().toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-[9px]">
+                  <div className="flex justify-between items-center text-sm text-slate-600">
                     <span className="text-gray-600">Tax ({taxType === 'vat' ? '16%' : taxType === 'levy' ? '1.5%' : taxType === 'withholding' ? '5%' : '0%'}):</span>
                     <span className="font-semibold">{taxAmount.toFixed(2)}</span>
                   </div>
-                  <div className="pt-0.5 border-t border-blue-300">
+                  <div className="pt-2 border-t border-blue-100">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-gray-700">Total:</span>
-                      <span className="text-xs font-bold text-blue-600">KES {calculateInvoiceTotal().toFixed(2)}</span>
+                      <span className="text-sm font-semibold text-slate-800">Total:</span>
+                      <span className="text-lg font-bold tracking-tight text-blue-700">KES {calculateInvoiceTotal().toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-1.5">
+              <div className="flex gap-3 md:justify-end">
                 <button
-                  className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold"
+                  className="flex-1 md:flex-none md:px-6 py-2.5 border border-slate-200 bg-white text-slate-600 rounded-full text-base font-semibold hover:bg-slate-50 transition"
                   
                   onClick={resetInvoiceModal}
                   disabled={isSubmitting}
@@ -2276,11 +2303,11 @@ const printInvoice = () => {
                   Cancel
                 </button>
                 <button
-                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:bg-blue-400"
+                  className="flex-1 md:flex-none md:px-8 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-full text-base font-semibold shadow-sm shadow-blue-200 hover:from-blue-600 hover:to-blue-700 transition disabled:opacity-50"
                   onClick={handleGenerateInvoice}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Saving..." : `Create ${invoiceType === "invoice" ? "Invoice" : "Quote"}`}
+                  {isSubmitting ? "Saving..." : `${isEditingInvoice ? "Update" : "Create"} ${invoiceType === "invoice" ? "Invoice" : "Quote"}`}
                 </button>
               </div>
             </div>
@@ -2386,7 +2413,7 @@ const printInvoice = () => {
                         invoiceDetailItems.map((item, index) => (
                           <tr key={index} className="border-t">
                             <td className="p-2">{index + 1}</td>
-                            <td className="p-2">{item.description || "—"}</td>
+                            <td className="p-2 whitespace-pre-wrap break-words">{item.description || "—"}</td>
                             <td className="p-2 text-right">{item.quantity || 0}</td>
                             <td className="p-2 text-right">KES {Number(item.unit_price || 0).toFixed(2)}</td>
                             <td className="p-2 text-right font-semibold">KES {Number(item.total_price || 0).toFixed(2)}</td>

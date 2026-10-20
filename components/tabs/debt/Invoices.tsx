@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FiPlus, FiDownload, FiEdit, FiTrash2, FiDollarSign, FiEye, FiMessageSquare } from "react-icons/fi";
+import { FiPlus, FiDownload, FiEdit, FiTrash2, FiDollarSign, FiEye, FiMessageSquare, FiSearch, FiFileText, FiCheckCircle, FiClock, FiX } from "react-icons/fi";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import PaymentModal from "@/components/PaymentModal";
@@ -82,6 +82,35 @@ export default function Invoices() {
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [isSendingReminders, setIsSendingReminders] = useState(false);
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const filteredInvoices = invoices.filter((invoice) => {
+    const customer = customers.find(c => c.customer_id === invoice.customer_id);
+    const query = search.trim().toLowerCase();
+    return (statusFilter === "All" || (invoice.payment_status || "Unpaid") === statusFilter)
+      && [invoice.invoice_number, invoice.reference_number, customer?.full_name, customer?.phone_number]
+        .some(value => value?.toLowerCase().includes(query));
+  });
+  const formatMoney = (value: number, currency = "KES") =>
+    `${currency} ${Number(value || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const currencyTotals = (field: "total_amount" | "amount_paid" | "balance_due") => {
+    const totals = invoices.reduce<Record<string, number>>((result, invoice) => {
+      const currency = invoice.currency || "KES";
+      result[currency] = (result[currency] || 0) + Number(invoice[field] || 0);
+      return result;
+    }, {});
+    return Object.entries(totals).map(([currency, total]) => formatMoney(total, currency)).join(" / ") || formatMoney(0);
+  };
+  const statusStyles: Record<string, string> = {
+    Paid: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+    "Partially Paid": "bg-amber-50 text-amber-700 ring-amber-600/20",
+    Overdue: "bg-rose-50 text-rose-700 ring-rose-600/20",
+    Unpaid: "bg-slate-100 text-slate-600 ring-slate-500/20",
+  };
+
   // Fetch invoices, customers, and inventory items
   useEffect(() => {
     fetchInvoices();
@@ -90,12 +119,19 @@ export default function Invoices() {
   }, []);
 
   const fetchInvoices = async () => {
+    setIsLoading(true);
+    setLoadError("");
     try {
       const response = await fetch("/api/invoices");
+      if (!response.ok) throw new Error("Failed to load invoices");
       const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("Invalid invoice response");
       setInvoices(data);
     } catch (error) {
       console.error("Error fetching invoices:", error);
+      setLoadError("We could not load your invoices. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -490,13 +526,17 @@ export default function Invoices() {
   };
 
   return (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Invoices</h1>
-        <div className="flex gap-2">
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-blue-600">Billing & payments</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Invoices</h1>
+          <p className="mt-2 text-sm text-slate-500">Manage invoices, track balances, and keep payments moving.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center text-sm font-semibold shadow-sm transition-colors"
           >
             <FiPlus className="mr-2" />
             Generate Invoice
@@ -504,14 +544,14 @@ export default function Invoices() {
           <button
             onClick={handleSendReminders}
             disabled={isSendingReminders}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-2 rounded-lg flex items-center"
+            className="border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 px-4 py-2.5 rounded-xl flex items-center text-sm font-medium transition-colors"
           >
             <FiMessageSquare className="mr-2" />
             {isSendingReminders ? "Sending..." : "Remind"}
           </button>
           <button
             onClick={() => handleOpenPaymentModal()}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center"
+            className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl flex items-center text-sm font-medium transition-colors"
           >
             <FiDollarSign className="mr-2" />
             Update Payment
@@ -519,8 +559,42 @@ export default function Invoices() {
         </div>
       </div>
 
-      {/* Invoices Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Total invoices", value: invoices.length.toLocaleString(), icon: FiFileText, color: "bg-blue-50 text-blue-600" },
+          { label: "Total invoiced", value: currencyTotals("total_amount"), icon: FiDollarSign, color: "bg-indigo-50 text-indigo-600" },
+          { label: "Payments received", value: currencyTotals("amount_paid"), icon: FiCheckCircle, color: "bg-emerald-50 text-emerald-600" },
+          { label: "Outstanding balance", value: currencyTotals("balance_due"), icon: FiClock, color: "bg-amber-50 text-amber-600" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-slate-500">{label}</p>
+              <span className={`rounded-xl p-2.5 ${color}`}><Icon className="h-5 w-5" /></span>
+            </div>
+            <p className="break-words text-xl font-semibold tracking-tight text-slate-900">{isLoading ? "..." : loadError ? "Unavailable" : value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="font-semibold text-slate-900">All invoices</h2>
+            <p className="mt-1 text-sm text-slate-500" aria-live="polite">{filteredInvoices.length} of {invoices.length} invoices</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="relative">
+              <FiSearch className="pointer-events-none absolute left-3 top-3 text-slate-400" />
+              <input aria-label="Search invoices" type="search" placeholder="Search invoice or customer..." value={search} onChange={e => setSearch(e.target.value)} className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:ring-blue-500 sm:w-72" />
+            </div>
+            <select aria-label="Filter by payment status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-blue-500">
+              <option value="All">All statuses</option>
+              {["Unpaid", "Partially Paid", "Paid", "Overdue"].map(status => <option key={status}>{status}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -536,46 +610,46 @@ export default function Invoices() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {invoices.map((invoice) => {
+            {!isLoading && !loadError && filteredInvoices.map((invoice) => {
               const customer = customers.find(c => c.customer_id === invoice.customer_id);
               return (
-                <tr key={invoice.id}>
+                <tr key={invoice.id} className="transition-colors hover:bg-slate-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.invoice_number}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{customer?.full_name || "N/A"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.invoice_date}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.due_date || "N/A"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.currency} {invoice.total_amount.toFixed(2)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.currency} {invoice.amount_paid.toFixed(2)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.currency} {invoice.balance_due?.toFixed(2) || "0.00"}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatMoney(invoice.total_amount, invoice.currency)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatMoney(invoice.amount_paid, invoice.currency)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatMoney(invoice.balance_due, invoice.currency)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-gray-700">{invoice.payment_status || "Unpaid"}</span>
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusStyles[invoice.payment_status || "Unpaid"] || statusStyles.Unpaid}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{invoice.payment_status || "Unpaid"}</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <button
                       onClick={() => handleView(invoice)}
-                      title="View/Download PDF"
-                      className="text-green-600 hover:text-green-900 mr-3"
+                      title="View/Download PDF" aria-label="View/Download PDF"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                     >
                       <FiEye />
                     </button>
                     <button
                       onClick={() => handleEdit(invoice)}
-                      title="Edit Invoice"
-                      className="text-indigo-600 hover:text-indigo-900 mr-3"
+                      title="Edit Invoice" aria-label="Edit Invoice"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                     >
                       <FiEdit />
                     </button>
                     <button
                       onClick={() => handleView(invoice)}
-                      title="Download PDF"
-                      className="text-blue-600 hover:text-blue-900 mr-3"
+                      title="Download PDF" aria-label="Download PDF"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                     >
                       <FiDownload />
                     </button>
                     <button
                       onClick={() => handleDelete(invoice.id)}
-                      title="Delete Invoice"
-                      className="text-red-600 hover:text-red-900"
+                      title="Delete Invoice" aria-label="Delete Invoice"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                     >
                       <FiTrash2 />
                     </button>
@@ -583,24 +657,33 @@ export default function Invoices() {
                 </tr>
               );
             })}
+            {(isLoading || loadError || filteredInvoices.length === 0) && (
+              <tr><td colSpan={9} className="px-6 py-16 text-center">
+                <FiFileText className="mx-auto mb-3 h-8 w-8 text-slate-300" />
+                <p className="font-medium text-slate-700" role="status">{isLoading ? "Loading invoices..." : loadError || (invoices.length ? "No matching invoices" : "Your first invoice starts here")}</p>
+                {!isLoading && !loadError && <p className="mt-2 text-sm text-slate-500">{invoices.length ? "Try another search or change the status filter." : "Generate an invoice to start tracking customer payments."}</p>}
+                {loadError && <button onClick={fetchInvoices} className="mt-3 text-sm font-semibold text-blue-600">Try again</button>}
+              </td></tr>
+            )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Generate Invoice Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 z-50">
+          <div role="dialog" aria-modal="true" aria-labelledby="invoice-dialog-title" className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800">
+                <h2 id="invoice-dialog-title" className="text-xl font-bold text-gray-800">
                   {isEditing ? "Edit Invoice" : "Generate New Invoice"}
                 </h2>
                 <button 
                   onClick={resetForm}
-                  className="text-gray-500 hover:text-gray-700"
+                  aria-label="Close invoice form" className="rounded-lg p-2 text-gray-500 hover:bg-slate-100 hover:text-gray-700"
                 >
-                  &times;
+                  <FiX className="h-5 w-5" />
                 </button>
               </div>
               
@@ -613,7 +696,7 @@ export default function Invoices() {
                       name="invoice_number"
                       value={formData.invoice_number}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                       required
                     />
                   </div>
@@ -625,7 +708,7 @@ export default function Invoices() {
                       name="reference_number"
                       value={formData.reference_number}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   
@@ -635,7 +718,7 @@ export default function Invoices() {
                       name="customer_id"
                       value={formData.customer_id}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                       required
                     >
                       <option value="">Select Customer</option>
@@ -654,7 +737,7 @@ export default function Invoices() {
                       name="invoice_date"
                       value={formData.invoice_date}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                       required
                     />
                   </div>
@@ -666,7 +749,7 @@ export default function Invoices() {
                       name="due_date"
                       value={formData.due_date}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   
@@ -676,7 +759,7 @@ export default function Invoices() {
                       name="payment_status"
                       value={formData.payment_status}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                     >
                       <option value="Unpaid">Unpaid</option>
                       <option value="Partially Paid">Partially Paid</option>
@@ -692,7 +775,7 @@ export default function Invoices() {
                       name="payment_method"
                       value={formData.payment_method}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   
@@ -704,7 +787,7 @@ export default function Invoices() {
                       value={formData.tax_amount}
                       onChange={handleInputChange}
                       readOnly={taxType !== "none"}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                       step="0.01"
                     />
                   </div>
@@ -716,7 +799,7 @@ export default function Invoices() {
                       name="discount_amount"
                       value={formData.discount_amount}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                       step="0.01"
                     />
                   </div>
@@ -728,7 +811,7 @@ export default function Invoices() {
                     name="tax"
                     value={taxType}
                     onChange={(e) => setTaxType(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md mb-3"
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500 mb-3"
                   >
                     <option value="none">None</option>
                     <option value="vat">VAT (16%)</option>
@@ -741,7 +824,7 @@ export default function Invoices() {
                     name="notes"
                     value={formData.notes}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-blue-500"
                     rows={3}
                   />
                 </div>
@@ -772,7 +855,7 @@ export default function Invoices() {
                   
                   {/* Selected Items */}
                   {selectedItems.length > 0 && (
-                    <div className="border rounded-lg p-4">
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl p-4">
                       <h4 className="font-medium text-gray-800 mb-3">Selected Items</h4>
                       <table className="w-full">
                         <thead>
@@ -832,7 +915,7 @@ export default function Invoices() {
                   
                   {/* Existing Invoice Items (shown when editing) */}
                   {isEditing && (
-                    <div className="border rounded-lg p-4 mt-4">
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl p-4 mt-4">
                       <h4 className="font-medium text-gray-800 mb-3">Existing Invoice Items</h4>
                       {isLoadingItems ? (
                         <p className="text-gray-500">Loading items...</p>
